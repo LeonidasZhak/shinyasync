@@ -1,5 +1,12 @@
 # shinyasync
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/dawiegriesel/shinyasync/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dawiegriesel/shinyasync/actions/workflows/R-CMD-check.yaml)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![GitHub release](https://img.shields.io/github/v/release/dawiegriesel/shinyasync?label=version)](https://github.com/dawiegriesel/shinyasync/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+<!-- badges: end -->
+
 > Async Shiny reactives on `mirai`, with the standard Shiny API.
 
 `shinyasync` lets you move slow work off the Shiny session thread without changing how you write Shiny. Add `Async` to the reactive primitives you already use and the rest of your app stays the same.
@@ -197,7 +204,7 @@ pool_async(url = "tcp://daemon-host:5555")
 
 ## Status
 
-Pre-alpha. The API above is the target; expect changes before 0.1.0.
+Experimental. 0.1.0 is the first usable release; the API may still change before 1.0. See [NEWS.md](NEWS.md) for changes.
 
 ## Related
 
