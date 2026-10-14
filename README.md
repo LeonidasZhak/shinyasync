@@ -4,6 +4,7 @@
 [![R-CMD-check](https://github.com/dawiegriesel/shinyasync/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dawiegriesel/shinyasync/actions/workflows/R-CMD-check.yaml)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![GitHub release](https://img.shields.io/github/v/release/dawiegriesel/shinyasync?label=version)](https://github.com/dawiegriesel/shinyasync/releases)
+[![pkgdown](https://github.com/dawiegriesel/shinyasync/actions/workflows/pkgdown.yaml/badge.svg)](https://dawiegriesel.github.io/shinyasync/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 <!-- badges: end -->
 
@@ -31,6 +32,8 @@ Shiny's `ExtendedTask` makes an app responsive within a session and across concu
 - errors surface on the next read, as they would from any reactive.
 
 Because they are real reactives, `bindEvent()`, `debounce()`, `req()`, `observe()` and modules all work unchanged. See [How dependency capture works](#how-dependency-capture-works) for what can and cannot appear inside an async expression.
+
+Documentation: <https://dawiegriesel.github.io/shinyasync/>
 
 ## Installation
 

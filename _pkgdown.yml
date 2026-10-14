@@ -1,0 +1,19 @@
+url: https://dawiegriesel.github.io/shinyasync/
+
+template:
+  bootstrap: 5
+
+reference:
+- title: Async reactives
+  desc: Counterparts of reactive(), observe() and reactiveVal() that run on a mirai daemon.
+  contents:
+  - reactiveAsync
+  - observeAsync
+  - reactiveValAsync
+- title: Status and control
+  contents:
+  - status_async
+  - cancel_async
+- title: Daemon pool
+  contents:
+  - pool_async

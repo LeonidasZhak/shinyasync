@@ -9,7 +9,7 @@ Description: Move slow work off the 'Shiny' session thread without changing
     daemons, track reactive dependencies, cancel superseded work and return
     the previous value while a new one is computed.
 License: MIT + file LICENSE
-URL: https://github.com/dawiegriesel/shinyasync
+URL: https://dawiegriesel.github.io/shinyasync/, https://github.com/dawiegriesel/shinyasync
 BugReports: https://github.com/dawiegriesel/shinyasync/issues
 Depends: 
     R (>= 4.1)
