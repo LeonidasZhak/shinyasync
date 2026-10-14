@@ -177,7 +177,7 @@ A `reactiveVal` whose setter accepts a `mirai` (or a `promise`). The value updat
 
 ### `status_async(r)`
 
-Reactive status of an async reactive: `"idle"`, `"running"`, `"success"` or `"error"`. Use it for spinners and disabled buttons.
+Reactive status of an async reactive: `"idle"`, `"running"`, `"success"` or `"error"`. Use it for spinners and disabled buttons. Reading the status of a `reactiveAsync()` that has not run yet starts it, the same way reading its value does.
 
 ### `cancel_async(r)`
 

@@ -42,9 +42,11 @@ to the worker. Calls to \code{req()}, \code{validate()}, \code{invalidateLater()
 created inside \code{expr} or may not run at all; see Limits below.
 }
 \details{
-While a task runs, reading the reactive returns the previous value, or halts
-silently like \code{req()} when there is none yet. Errors raised in the worker
-are re-thrown when the reactive is read.
+The task starts the first time the reactive or its \code{\link[=status_async]{status_async()}} is read,
+so a spinner driven by the status is enough to kick it off. While a task
+runs, reading the reactive returns the previous value, or halts silently
+like \code{req()} when there is none yet. Errors raised in the worker are
+re-thrown when the reactive is read.
 
 User-defined functions and objects that \code{expr} refers to (and functions they
 call) are sent along automatically. Packages that are attached in the

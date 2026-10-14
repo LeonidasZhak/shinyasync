@@ -15,6 +15,21 @@ test_that("value resolves in a worker and updates with its dependencies", {
   })
 })
 
+test_that("reading the status alone starts the task", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    r <- reactiveAsync(input$n * 2)
+    # Nothing reads r() until the status says so; the status read must start it.
+    output$x <- shiny::renderText(if (status_async(r) == "success") r() else "")
+  }, {
+    session$setInputs(n = 3)
+    # No value read here: peek() would start the task itself.
+    wait_for(function() status_async(r) == "success", session, timeout = 3)
+    expect_equal(peek(r), 6)
+    expect_equal(output$x, "6")
+  })
+})
+
 test_that("runs in a different process", {
   local_pool()
   shiny::testServer(function(input, output, session) {

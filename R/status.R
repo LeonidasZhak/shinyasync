@@ -1,6 +1,9 @@
 #' Status of an async reactive
 #'
 #' A reactive read of the task status, for spinners and disabled buttons.
+#' Reading the status of a [reactiveAsync()] that has not run yet starts it,
+#' just as reading its value would, so a UI that waits for `"success"` before
+#' reading the value does not wait forever.
 #'
 #' @param r An object created by [reactiveAsync()], [observeAsync()] or
 #'   [reactiveValAsync()].
@@ -8,7 +11,9 @@
 #' @return One of `"idle"`, `"running"`, `"success"` or `"error"`.
 #' @export
 status_async <- function(r) {
-  get_task(r, "status_async")$status()
+  task <- get_task(r, "status_async")
+  task$start()
+  task$status()
 }
 
 #' Cancel a running async task

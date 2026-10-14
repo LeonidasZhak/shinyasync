@@ -11,6 +11,7 @@ Move slow work off the 'Shiny' session thread without changing how you write 'Sh
 \seealso{
 Useful links:
 \itemize{
+  \item \url{https://dawiegriesel.github.io/shinyasync/}
   \item \url{https://github.com/dawiegriesel/shinyasync}
   \item Report bugs at \url{https://github.com/dawiegriesel/shinyasync/issues}
 }

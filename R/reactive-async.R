@@ -8,9 +8,11 @@
 #' `isolate()` also run on the session thread, unless they use variables
 #' created inside `expr` or may not run at all; see Limits below.
 #'
-#' While a task runs, reading the reactive returns the previous value, or halts
-#' silently like `req()` when there is none yet. Errors raised in the worker
-#' are re-thrown when the reactive is read.
+#' The task starts the first time the reactive or its [status_async()] is read,
+#' so a spinner driven by the status is enough to kick it off. While a task
+#' runs, reading the reactive returns the previous value, or halts silently
+#' like `req()` when there is none yet. Errors raised in the worker are
+#' re-thrown when the reactive is read.
 #'
 #' User-defined functions and objects that `expr` refers to (and functions they
 #' call) are sent along automatically. Packages that are attached in the
@@ -80,11 +82,16 @@ reactiveAsync <- function(expr, mode = c("latest", "queue"), globals = NULL,
   )
 
   started <- FALSE
-  r <- shiny::reactive(label = label, {
+  task$start <- function() {
     if (!started) {
       started <<- TRUE
       task$trigger$resume()
     }
+    invisible()
+  }
+
+  r <- shiny::reactive(label = label, {
+    task$start()
     err <- task$error()
     if (!is.null(err)) stop(err)
     value <- task$value()

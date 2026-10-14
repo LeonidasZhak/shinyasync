@@ -1,3 +1,9 @@
+# shinyasync (development version)
+
+* `status_async()` now starts a `reactiveAsync()` that has not run yet, the
+  same way reading its value does. Previously a UI that read the value only
+  once the status was `"success"` never started the task (#1).
+
 # shinyasync 0.1.0
 
 First release.

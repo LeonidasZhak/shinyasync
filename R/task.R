@@ -21,6 +21,10 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   st$trigger <- NULL
   # Called with the condition whenever a task fails; observeAsync() reports it.
   st$on_error <- NULL
+  # Starts a lazily created task. reactiveAsync() replaces this with a function
+  # that resumes its suspended trigger; a read of the value or of the status
+  # both count as interest in the result.
+  st$start <- function() invisible()
 
   # Mirror status in a plain field so it can be checked outside reactive
   # contexts, including after the session has ended.
