@@ -202,9 +202,17 @@ pool_async(url = "tcp://daemon-host:5555")
 - **Pure R.** The dispatch path is already native (nanonext/NNG, later); the time goes to the user's code in the worker. Rust or C++ would add install friction without measurable gain.
 - **Cancellation is built in.** `ExtendedTask` has no cancel method; `shinyasync` holds the mirai reference and calls `stop_mirai()` for you.
 
-## Status
+## Status and feedback wanted
 
 Experimental. 0.1.0 is the first usable release; the API may still change before 1.0. See [NEWS.md](NEWS.md) for changes.
+
+The package is not on CRAN yet on purpose. Dependency capture rewrites your expression, and real apps are the best way to find the cases it gets wrong. If you try it, please report:
+
+- anything that behaves differently from `reactive()`, `observe()` or `reactiveVal()`;
+- expressions that fail in the worker but work in a plain reactive;
+- results from remote daemon pools or multi-process deployments.
+
+Bugs go in [Issues](https://github.com/dawiegriesel/shinyasync/issues). Questions, design feedback and "it worked for me" reports go in [Discussions](https://github.com/dawiegriesel/shinyasync/discussions).
 
 ## Related
 
