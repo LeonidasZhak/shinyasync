@@ -237,3 +237,21 @@ test_that("helpers, NULL globals and modified server objects work in a worker", 
     expect_equal(peek(r), 123)
   })
 })
+
+test_that("reactiveAsync works inside a module and captures module locals", {
+  local_pool()
+  mod <- function(id, k) {
+    shiny::moduleServer(id, function(input, output, session) {
+      scale <- function(x) x * k
+      r <- reactiveAsync(scale(input$n))
+      output$x <- shiny::renderText(r())
+      r
+    })
+  }
+  shiny::testServer(mod, args = list(id = "mod", k = 10), {
+    session$setInputs(n = 4)
+    wait_for(function() identical(peek(r), 40), session)
+    expect_equal(peek(r), 40)
+    expect_equal(session$ns("n"), "mod-n")
+  })
+})

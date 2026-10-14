@@ -110,6 +110,35 @@ observe({
 output$t <- renderPrint(v())
 ```
 
+### Modules
+
+Nothing changes inside `moduleServer()`: the namespaced `input` and the module's local objects are captured like any others, and the async reactive can be returned to the caller. Call `pool_async()` once in the top-level server.
+
+```r
+densityServer <- function(id, sd = 1) {
+  moduleServer(id, function(input, output, session) {
+    simulate <- function(n) density(rnorm(n, sd = sd))   # shipped to the worker
+
+    d <- reactiveAsync(simulate(input$n))
+
+    output$p      <- renderPlot(plot(d()))
+    output$status <- renderText(status_async(d))
+    d
+  })
+}
+
+server <- function(input, output, session) {
+  pool_async(workers = 2)
+
+  left  <- densityServer("left", sd = 1)
+  right <- densityServer("right", sd = 3)
+
+  output$both <- renderText(sprintf("%.3f / %.3f", left()$bw, right()$bw))
+}
+```
+
+The full app is in `inst/examples/modules/app.R`.
+
 ## API
 
 ### `reactiveAsync(expr, mode = c("latest", "queue"))`
