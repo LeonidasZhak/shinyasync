@@ -1,0 +1,378 @@
+# Dependency capture -------------------------------------------------------
+#
+# An async expression is split in two. Reactive reads (`input$x`, `data()`,
+# `rv[["y"]]`) and session-only calls (`req()`, `validate()`,
+# `invalidateLater()`, `isolate()`) are hoisted out and evaluated on the
+# session thread, where they register dependencies as usual. Each is replaced
+# by a placeholder symbol, and the rewritten expression is shipped to a worker
+# together with the placeholder values and any user-defined globals it needs.
+
+session_fns <- c("req", "validate", "invalidateLater", "isolate")
+
+new_capture <- function(expr, env, globals = NULL) {
+  if (!is.null(globals) && (!is.list(globals) || is.null(names(globals)) ||
+                            any(names(globals) == ""))) {
+    stop("`globals` must be a named list.", call. = FALSE)
+  }
+  analysis <- NULL
+  # Free names of helper closures, so findGlobals() runs once per helper
+  # rather than on every invalidation.
+  fn_cache <- new.env(parent = emptyenv())
+
+  resolve <- function() {
+    # Analysed on first use, so reactives defined later in server() resolve.
+    if (is.null(analysis)) analysis <<- analyze_expr(expr, env)
+    args <- lapply(analysis$hoisted, eval, envir = env)
+    names(args) <- analysis$placeholders
+    skip <- c(analysis$placeholders, names(globals))
+    deps <- collect_globals(
+      setdiff(analysis$free, skip), env,
+      soft = setdiff(analysis$soft, skip), cache = fn_cache
+    )
+    list(
+      expr = worker_expr(analysis$expr, deps$pkgs),
+      args = args,
+      globals = c(deps$values, globals)
+    )
+  }
+
+  list(resolve = resolve)
+}
+
+# Rewrite `expr` for the worker. Returns the rewritten expression, the hoisted
+# calls with their placeholder names, the free names the worker needs
+# (`free`), and names that appear in formulas (`soft`), which are shipped only
+# if they resolve to a plain object.
+analyze_expr <- function(expr, env) {
+  hoisted <- list()
+  keys <- character()
+  roots <- character()
+  formula_names <- character()
+
+  hoist <- function(x, isolated) {
+    if (isolated) x <- as.call(list(quote(shiny::isolate), x))
+    key <- paste(deparse(x), collapse = "\n")
+    i <- match(key, keys)
+    if (is.na(i)) {
+      keys <<- c(keys, key)
+      hoisted[[length(keys)]] <<- x
+      i <- length(keys)
+    }
+    as.name(paste0(".sa_", i))
+  }
+
+  walk_args <- function(x, idx, locals, conditional, isolated) {
+    for (j in idx) {
+      # Only calls can be rewritten; leave symbols and missing args alone.
+      if (is.call(x[[j]])) x[[j]] <- walk(x[[j]], locals, conditional, isolated)
+    }
+    x
+  }
+
+  # `locals`: names bound inside the expression at this point, which shadow
+  # anything in `env`. `conditional`: the call may not run, so session-side
+  # req()/validate() would halt too eagerly. `isolated`: inside isolate().
+  walk <- function(x, locals, conditional = FALSE, isolated = FALSE) {
+    if (!is.call(x)) return(x)
+    head <- x[[1]]
+    n <- length(x)
+    rest <- seq_len(n)[-1]
+
+    if (identical(head, quote(quote))) return(x)
+
+    if (identical(head, quote(`function`)) && n >= 3L) {
+      params <- names(x[[2]])
+      x[[3]] <- walk(x[[3]], c(locals, params, local_names(x[[3]])), TRUE, isolated)
+      return(x)
+    }
+
+    if (is_assign(head) && n == 3L && is.call(x[[2]])) {
+      root <- assign_root(x[[2]])
+      if (!is.null(root) && !root %in% locals) {
+        hit <- lookup(root, env)
+        if (hit$found && shiny::is.reactivevalues(hit$value)) {
+          stop(
+            sprintf("`%s` assigns to reactive values inside an async expression.\n",
+                    paste(deparse(x), collapse = " ")),
+            "The expression runs in a worker; assign the result in a separate observe() instead.",
+            call. = FALSE
+          )
+        }
+        # `df$col <- v` reads `df` before making it local; it must be shipped.
+        roots <<- c(roots, root)
+      }
+      return(walk_args(x, rest, locals, conditional, isolated))
+    }
+
+    if (identical(head, quote(`~`))) {
+      x <- walk_args(x, rest, locals, conditional, isolated)
+      formula_names <<- c(formula_names, setdiff(all.names(x), c("~", locals)))
+      return(x)
+    }
+
+    kind <- hoist_kind(x, env, locals)
+    if (identical(kind, "read")) return(hoist(x, isolated))
+
+    if (!is.null(kind)) {
+      uses_locals <- any(free_names(x) %in% locals)
+      if (kind == "isolate") {
+        if (!uses_locals) return(hoist(x, FALSE))
+        # Reads inside are isolated on the session; the call itself is a
+        # no-op in the worker.
+        inner <- walk_args(x, rest, locals, conditional, TRUE)
+        return(as.call(list(quote(`(`), inner[[2]])))
+      }
+      # req()/validate() that may not run, or that use worker-local values,
+      # stay in the worker, where their silent errors are handled.
+      if (!uses_locals && (!conditional || kind == "invalidateLater")) {
+        return(hoist(x, isolated))
+      }
+      return(walk_args(x, rest, locals, conditional, isolated))
+    }
+
+    if (identical(head, quote(`if`))) {
+      x <- walk_args(x, 2L, locals, conditional, isolated)
+      return(walk_args(x, rest[-1], locals, TRUE, isolated))
+    }
+    if (identical(head, quote(`&&`)) || identical(head, quote(`||`))) {
+      x <- walk_args(x, 2L, locals, conditional, isolated)
+      return(walk_args(x, rest[-1], locals, TRUE, isolated))
+    }
+    if (identical(head, quote(switch)) && n >= 2L) {
+      x <- walk_args(x, 2L, locals, conditional, isolated)
+      return(walk_args(x, rest[-1], locals, TRUE, isolated))
+    }
+    if (identical(head, quote(`for`)) && n == 4L) {
+      x <- walk_args(x, 3L, locals, conditional, isolated)
+      return(walk_args(x, 4L, locals, TRUE, isolated))
+    }
+    if (identical(head, quote(`while`)) && n == 3L) {
+      x <- walk_args(x, 2L, locals, conditional, isolated)
+      return(walk_args(x, 3L, locals, TRUE, isolated))
+    }
+    if (identical(head, quote(`repeat`))) {
+      return(walk_args(x, rest, locals, TRUE, isolated))
+    }
+
+    walk_args(x, rest, locals, conditional, isolated)
+  }
+
+  rewritten <- walk(expr, local_names(expr))
+  placeholders <- if (length(keys)) paste0(".sa_", seq_along(keys)) else character()
+  free <- setdiff(unique(c(free_names(rewritten), roots)), placeholders)
+  list(
+    expr = rewritten,
+    hoisted = hoisted,
+    placeholders = placeholders,
+    free = free,
+    soft = setdiff(unique(formula_names), c(free, placeholders))
+  )
+}
+
+is_assign <- function(head) {
+  identical(head, quote(`<-`)) || identical(head, quote(`=`)) || identical(head, quote(`<<-`))
+}
+
+# The variable a complex assignment such as `x$a[[i]] <- v` modifies.
+assign_root <- function(lhs) {
+  while (is.call(lhs)) {
+    if (length(lhs) < 2L) return(NULL)
+    lhs <- lhs[[2]]
+  }
+  if (is.symbol(lhs)) as.character(lhs) else NULL
+}
+
+# Names bound by plain assignment or `for` in `x`, not descending into nested
+# function definitions, which have their own scope. Unlike
+# codetools::findFuncLocals(), `rv$y <- v` does not make `rv` local.
+local_names <- function(x) {
+  out <- character()
+  visit <- function(x) {
+    if (!is.call(x)) return()
+    head <- x[[1]]
+    if (identical(head, quote(`function`)) || identical(head, quote(quote))) return()
+    if (is_assign(head) && !identical(head, quote(`<<-`)) && length(x) == 3L &&
+        is.symbol(x[[2]])) {
+      out <<- c(out, as.character(x[[2]]))
+    }
+    if (identical(head, quote(`for`)) && length(x) == 4L && is.symbol(x[[2]])) {
+      out <<- c(out, as.character(x[[2]]))
+    }
+    for (j in seq_along(x)[-1]) visit(x[[j]])
+  }
+  visit(x)
+  unique(out)
+}
+
+# "read" for a reactive read, the function name for a session-only shiny
+# call, NULL otherwise.
+hoist_kind <- function(x, env, locals) {
+  head <- x[[1]]
+
+  # input$name, rv[["name"]]
+  if ((identical(head, quote(`$`)) || identical(head, quote(`[[`))) && length(x) == 3L) {
+    obj <- x[[2]]
+    key <- x[[3]]
+    literal <- is.character(key) || (identical(head, quote(`$`)) && is.symbol(key))
+    if (is.symbol(obj) && literal && !as.character(obj) %in% locals) {
+      hit <- lookup(as.character(obj), env)
+      if (hit$found && shiny::is.reactivevalues(hit$value)) return("read")
+    }
+    return(NULL)
+  }
+
+  # reactive()
+  if (is.symbol(head) && length(x) == 1L && !as.character(head) %in% locals) {
+    hit <- lookup(as.character(head), env, mode = "function")
+    if (hit$found && shiny::is.reactive(hit$value)) return("read")
+  }
+
+  shiny_fn_name(head, env, locals)
+}
+
+shiny_fn_name <- function(head, env, locals = character()) {
+  if (is.call(head) && identical(head[[1]], quote(`::`)) &&
+      identical(head[[2]], quote(shiny)) && as.character(head[[3]]) %in% session_fns) {
+    return(as.character(head[[3]]))
+  }
+  if (is.symbol(head) && as.character(head) %in% session_fns &&
+      !as.character(head) %in% locals) {
+    name <- as.character(head)
+    hit <- lookup(name, env, mode = "function")
+    if (hit$found && identical(hit$value, getExportedValue("shiny", name))) return(name)
+  }
+  NULL
+}
+
+# Globals ------------------------------------------------------------------
+
+# Resolve `names` from `env` into values to ship to the worker and packages to
+# attach there. Helper closures are rebound to a copy of their defining
+# environment that holds only what they use, so closures from different scopes
+# keep their own bindings and nothing drags the session along.
+collect_globals <- function(names, env, soft = character(), cache = NULL) {
+  if (!is.character(names)) names <- free_names(names)
+  values <- list()
+  pkgs <- character()
+  clones <- list()
+
+  clone_for <- function(src) {
+    for (entry in clones) if (identical(entry$src, src)) return(entry$clone)
+    clone <- new.env(parent = globalenv())
+    clones[[length(clones) + 1L]] <<- list(src = src, clone = clone)
+    clone
+  }
+
+  classify <- function(name, from, soft = FALSE) {
+    hit <- lookup(name, from)
+    if (!hit$found) return(NULL)
+    where <- hit$env
+
+    if (identical(where, baseenv()) || identical(where, .BaseNamespaceEnv)) return(NULL)
+    env_name <- environmentName(where)
+    if (startsWith(env_name, "package:")) {
+      pkgs <<- c(pkgs, sub("^package:", "", env_name))
+      return(NULL)
+    }
+    if (!identical(where, globalenv()) && !isNamespace(where) &&
+        !startsWith(env_name, "imports:") && env_name != "") {
+      return(NULL)  # Autoloads, tools:rstudio and similar
+    }
+
+    value <- hit$value
+    if (is_reactive_like(value)) {
+      if (soft) return(NULL)
+      stop(
+        sprintf(
+          "`%s` is a reactive object that shinyasync could not resolve before sending the task to a worker.\n",
+          name
+        ),
+        "Read it into a variable in a separate reactive or pass the value with `globals = list(...)`.",
+        call. = FALSE
+      )
+    }
+    if (is.function(value) && !is.primitive(value) && !in_namespace(value)) {
+      value <- ship_closure(value, name)
+    }
+    list(value)
+  }
+
+  ship_closure <- function(f, name) {
+    src <- environment(f)
+    clone <- clone_for(src)
+    if (exists(name, envir = clone, inherits = FALSE)) {
+      return(get(name, envir = clone, inherits = FALSE))
+    }
+    fnames <- closure_free_names(f, name, cache)
+    environment(f) <- clone
+    # Bind before resolving dependencies so recursive helpers terminate.
+    assign(name, f, envir = clone)
+    for (nm in fnames) {
+      if (exists(nm, envir = clone, inherits = FALSE)) next
+      r <- classify(nm, src)
+      if (!is.null(r)) assign(nm, r[[1]], envir = clone)
+    }
+    f
+  }
+
+  for (name in names) {
+    r <- classify(name, env)
+    if (!is.null(r)) values[name] <- r
+  }
+  for (name in soft) {
+    r <- classify(name, env, soft = TRUE)
+    if (!is.null(r)) values[name] <- r
+  }
+
+  list(values = values, pkgs = setdiff(unique(pkgs), "base"))
+}
+
+closure_free_names <- function(f, name, cache) {
+  if (is.null(cache)) return(free_names(f))
+  hit <- cache[[name]]
+  if (!is.null(hit) && identical(hit$fn, f)) return(hit$names)
+  names <- free_names(f)
+  cache[[name]] <- list(fn = f, names = names)
+  names
+}
+
+free_names <- function(x) {
+  if (!is.function(x)) {
+    f <- function() NULL
+    body(f) <- x
+    x <- f
+  }
+  codetools::findGlobals(x, merge = TRUE)
+}
+
+worker_expr <- function(expr, pkgs) {
+  if (!length(pkgs)) return(call("{", expr))
+  bquote({
+    for (.sa_pkg in .(pkgs)) {
+      suppressPackageStartupMessages(library(.sa_pkg, character.only = TRUE))
+    }
+    .(expr)
+  })
+}
+
+# Helpers ------------------------------------------------------------------
+
+lookup <- function(name, env, mode = "any") {
+  while (!identical(env, emptyenv())) {
+    if (exists(name, envir = env, mode = mode, inherits = FALSE)) {
+      return(list(found = TRUE, value = get(name, envir = env, mode = mode), env = env))
+    }
+    env <- parent.env(env)
+  }
+  list(found = FALSE)
+}
+
+in_namespace <- function(f) {
+  e <- environment(f)
+  is.null(e) || isNamespace(e) || identical(e, baseenv())
+}
+
+is_reactive_like <- function(x) {
+  shiny::is.reactive(x) || shiny::is.reactivevalues(x) ||
+    inherits(x, c("ShinySession", "session_proxy", "MockShinySession", "shinyoutput"))
+}

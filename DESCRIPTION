@@ -1,0 +1,29 @@
+Package: shinyasync
+Title: Async Shiny Reactives on 'mirai'
+Version: 0.0.0.9000
+Authors@R: 
+    person("Dawie", "Griesel", , "dawiegr@gmail.com", role = c("aut", "cre"))
+Description: Move slow work off the 'Shiny' session thread without changing
+    how you write 'Shiny'. Provides asynchronous counterparts of reactive(),
+    observe() and reactiveVal() that evaluate their expressions on 'mirai'
+    daemons, track reactive dependencies, cancel superseded work and return
+    the previous value while a new one is computed.
+License: MIT + file LICENSE
+URL: https://github.com/dawiegriesel/shinyasync
+BugReports: https://github.com/dawiegriesel/shinyasync/issues
+Depends: 
+    R (>= 4.1)
+Imports: 
+    codetools,
+    later,
+    mirai (>= 2.0.0),
+    parallel,
+    promises,
+    shiny (>= 1.8.1)
+Suggests: 
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1
