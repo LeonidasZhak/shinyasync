@@ -8,7 +8,7 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  pool_async(workers = 4)             # starts daemons; stopped with the session
+  pool_async(workers = 4)             # daemons shared by all sessions in this process
 
   r <- reactiveAsync({
     x <- rnorm(input$n)               # runs in a worker, not the session

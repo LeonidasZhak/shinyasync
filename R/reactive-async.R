@@ -4,8 +4,9 @@
 #' session stays responsive. Reactive reads that appear in `expr`, such as
 #' `input$x`, `input[["x"]]`, `rv$y` or `data()`, are evaluated on the session
 #' thread, where they register dependencies as usual, and their values are sent
-#' to the worker. Calls to `req()`, `validate()` and `invalidateLater()` also
-#' run on the session thread unless they use variables created inside `expr`.
+#' to the worker. Calls to `req()`, `validate()`, `invalidateLater()` and
+#' `isolate()` also run on the session thread, unless they use variables
+#' created inside `expr` or may not run at all; see Limits below.
 #'
 #' While a task runs, reading the reactive returns the previous value, or halts
 #' silently like `req()` when there is none yet. Errors raised in the worker

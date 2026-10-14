@@ -37,8 +37,9 @@ Like \code{\link[shiny:reactive]{shiny::reactive()}}, but \code{expr} is evaluat
 session stays responsive. Reactive reads that appear in \code{expr}, such as
 \code{input$x}, \code{input[["x"]]}, \code{rv$y} or \code{data()}, are evaluated on the session
 thread, where they register dependencies as usual, and their values are sent
-to the worker. Calls to \code{req()}, \code{validate()} and \code{invalidateLater()} also
-run on the session thread unless they use variables created inside \code{expr}.
+to the worker. Calls to \code{req()}, \code{validate()}, \code{invalidateLater()} and
+\code{isolate()} also run on the session thread, unless they use variables
+created inside \code{expr} or may not run at all; see Limits below.
 }
 \details{
 While a task runs, reading the reactive returns the previous value, or halts

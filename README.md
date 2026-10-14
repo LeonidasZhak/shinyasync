@@ -23,7 +23,7 @@ Shiny's `ExtendedTask` makes an app responsive within a session and across concu
 - while a task runs, reading the reactive returns the previous value (stale-while-revalidate) or silently halts like `req()` when there is none;
 - errors surface on the next read, as they would from any reactive.
 
-Because they are real reactives, `bindEvent()`, `debounce()`, `req()`, `observe()` and modules all work unchanged.
+Because they are real reactives, `bindEvent()`, `debounce()`, `req()`, `observe()` and modules all work unchanged. See [How dependency capture works](#how-dependency-capture-works) for what can and cannot appear inside an async expression.
 
 ## Installation
 
@@ -47,7 +47,7 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  pool_async(workers = 4)             # starts daemons; stopped with the session
+  pool_async(workers = 4)             # daemons shared by all sessions in this process
 
   r <- reactiveAsync({
     x <- rnorm(input$n)               # runs in a worker, not the session
@@ -103,10 +103,11 @@ r <- reactiveAsync({
 v <- reactiveValAsync()
 
 observe({
-  v(mirai::mirai(slow(x), x = input$x))   # resolves in the background
+  # A raw mirai ships only what you pass it; functions must exist in the worker.
+  v(mirai::mirai(summary(rnorm(n)), n = input$n))   # resolves in the background
 })
 
-output$t <- renderTable(v())
+output$t <- renderPrint(v())
 ```
 
 ## API
@@ -120,7 +121,7 @@ Returns a reactive. `expr` is evaluated in a worker. Reactive dependencies are c
 
 ### `observeAsync(expr, ...)`
 
-Like `observe()`, but `expr` runs in a worker. Returns an observer handle with `$status()` and `$cancel()`.
+Like `observe()`, but `expr` runs in a worker. Returns an observer handle with `$status()`, `$cancel()`, `$destroy()`, `$suspend()` and `$resume()`. Nothing reads an observer's result, so errors from `expr` are reported with `message()` and the status becomes `"error"` until a dependency changes.
 
 ### `reactiveValAsync(value = NULL)`
 
@@ -132,11 +133,23 @@ Reactive status of an async reactive: `"idle"`, `"running"`, `"success"` or `"er
 
 ### `cancel_async(r)`
 
-Stops the running task, if any.
+Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`.
 
 ### `pool_async(workers = NULL, ...)`
 
-Starts a `mirai` daemon pool for the current session (or app, if called outside a session) and registers cleanup on `onStop()` / `session$onSessionEnded()`. Arguments pass through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. If you already manage `daemons()` yourself, skip this.
+Starts a `mirai` daemon pool shared by every session in the R process. The pool is reference-counted: each session that calls it holds it until the session ends, a call outside a session holds it until the app stops, and the pool shuts down when the last holder releases it. Arguments pass through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. If you already manage `daemons()` yourself, skip this.
+
+## How dependency capture works
+
+An async expression is split in two. Reactive reads that appear literally in it, such as `input$x`, `input[["x"]]`, `rv$y` or `data()`, are evaluated on the session thread, where they register dependencies as usual. Their values, together with any user-defined functions and objects the expression refers to, are sent to a worker that evaluates the rest. Packages attached in the session and used by the expression are attached in the worker.
+
+Limits that follow from this:
+
+- **Reads must be literal.** Reads inside helper functions or with computed names (`input[[paste0("x", i)]]`) cannot be resolved. Read such values in a separate `reactive()` first, or pass them with `globals = list(...)`.
+- **Every read is a dependency**, even in a branch that is not taken: `if (input$a) input$b else 0` re-runs when `input$b` changes. Wrap a read in `isolate()` to use its value without depending on it.
+- **`req()` and `validate()` run on the session** only when they are certain to run, i.e. not inside `if`, `&&`, `||`, `switch`, loops or functions, and not when they use variables created inside the expression. Otherwise they run in the worker, where a failure keeps the previous value.
+- **Reads inside formulas are hoisted**, so `lm(y ~ input$x)` fits on the value of `input$x` under a placeholder name. Other formula symbols are shipped if they name a plain object in the session.
+- **Assigning to reactive values** (`rv$x <- ...`) inside the expression is an error. Do that in an `observe()` that reads the result.
 
 ## Deployment
 
@@ -160,7 +173,7 @@ Pre-alpha. The API above is the target; expect changes before 0.1.0.
 ## Related
 
 - [mirai](https://mirai.r-lib.org/) — the async engine
-- [Shiny ExtendedTask](https://shiny.posit.co/r/reference/shiny/latest/extendedtask.html) — the mechanism this wraps
+- [Shiny ExtendedTask](https://shiny.posit.co/r/reference/shiny/latest/extendedtask.html) — the mechanism this is modelled on
 - [crew](https://wlandau.github.io/crew/) — autoscaling worker pools, if you outgrow this
 - [faucet](https://github.com/ixpantia/faucet) — multi-process load balancing for Shiny and Plumber
 
