@@ -149,6 +149,15 @@ server <- function(input, output, session) {
 
 The full app is in `inst/examples/modules/app.R`.
 
+### A complete app
+
+[shinyasync-example](https://github.com/dawiegriesel/shinyasync-example) is a
+surf forecast dashboard that uses every primitive in the package: parallel API
+fetches with stale-while-revalidate, a chained async score, a button-triggered
+simulation with cancel, a background refresh, an `observeAsync()` cache writer,
+a raw mirai feeding `reactiveValAsync()`, and a module mounted twice. A task
+monitor in the sidebar shows the status of each one.
+
 ## API
 
 ### `reactiveAsync(expr, mode = c("latest", "queue"))`
@@ -219,6 +228,7 @@ Bugs go in [Issues](https://github.com/dawiegriesel/shinyasync/issues). Question
 
 ## Related
 
+- [shinyasync-example](https://github.com/dawiegriesel/shinyasync-example) — a full dashboard built on the package
 - [mirai](https://mirai.r-lib.org/) — the async engine
 - [Shiny ExtendedTask](https://shiny.posit.co/r/reference/shiny/latest/extendedtask.html) — the mechanism this is modelled on
 - [crew](https://wlandau.github.io/crew/) — autoscaling worker pools, if you outgrow this
