@@ -17,11 +17,12 @@
 #' if (interactive()) {
 #'   library(shiny)
 #'   server <- function(input, output, session) {
-#'     pool_async(workers = 2)
+#'     # Set from two places, so a reactiveVal rather than a reactive.
 #'     report <- reactiveValAsync()
 #'     observe({
 #'       report(mirai_async(build_report(input$region, input$month)))
 #'     }) |> bindEvent(input$generate)
+#'     observe(report(NULL)) |> bindEvent(input$clear)
 #'     output$report <- renderTable(report())
 #'   }
 #' }

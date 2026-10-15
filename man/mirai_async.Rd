@@ -24,11 +24,13 @@ A \code{mirai}.
 }
 \description{
 Evaluates \code{expr} on a \code{mirai} daemon the way \code{\link[=reactiveAsync]{reactiveAsync()}} does, but
-returns the \code{mirai} itself instead of a reactive, for manual control: set
-it on a \code{\link[=reactiveValAsync]{reactiveValAsync()}}, or start several and collect them yourself.
-A raw \code{\link[mirai:mirai]{mirai::mirai()}} ships only what you hand it; \code{mirai_async()} sends
-the user-defined functions and objects \code{expr} refers to, and the functions
-they call, along automatically, and attaches the packages it uses.
+returns the \code{mirai} itself instead of a reactive, to set on a
+\code{\link[=reactiveValAsync]{reactiveValAsync()}}. The usual case is a fan-out: one observer starting a
+task per item. For a single task derived from inputs, \code{\link[=reactiveAsync]{reactiveAsync()}}
+with \code{\link[shiny:bindEvent]{shiny::bindEvent()}} is simpler. A raw \code{\link[mirai:mirai]{mirai::mirai()}} ships only
+what you hand it; \code{mirai_async()} sends the user-defined functions and
+objects \code{expr} refers to, and the functions they call, along
+automatically, and attaches the packages it uses.
 }
 \details{
 Reactive reads in \code{expr} (\code{input$x}, \code{data()}) and \code{req()}, \code{validate()},
@@ -48,16 +50,16 @@ when a \code{\link[=reactiveValAsync]{reactiveValAsync()}} holding it is read.
 if (interactive()) {
   library(shiny)
   server <- function(input, output, session) {
-    pool_async(workers = 2)
-
-    ranking <- reactiveValAsync()
+    # One forecast per spot, fetched in parallel on each refresh.
+    forecasts <- lapply(spots, function(spot) reactiveValAsync())
     observe({
-      # rank_spots() and the helpers it calls are shipped to the worker.
-      ranking(mirai_async(rank_spots(spots, days = input$days)))
-    }) |> bindEvent(input$rank)
+      for (i in seq_along(spots)) {
+        # fetch_marine() and its helpers are shipped to the worker.
+        forecasts[[i]](mirai_async(fetch_marine(spots[[i]], days = input$days)))
+      }
+    }) |> bindEvent(input$refresh)
 
-    output$ranking <- renderTable(ranking())
-    output$status  <- renderText(status_async(ranking))
+    output$table <- renderTable(do.call(rbind, lapply(forecasts, function(f) f())))
   }
 }
 }

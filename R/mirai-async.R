@@ -1,11 +1,13 @@
 #' Start a mirai with dependency capture
 #'
 #' Evaluates `expr` on a `mirai` daemon the way [reactiveAsync()] does, but
-#' returns the `mirai` itself instead of a reactive, for manual control: set
-#' it on a [reactiveValAsync()], or start several and collect them yourself.
-#' A raw [mirai::mirai()] ships only what you hand it; `mirai_async()` sends
-#' the user-defined functions and objects `expr` refers to, and the functions
-#' they call, along automatically, and attaches the packages it uses.
+#' returns the `mirai` itself instead of a reactive, to set on a
+#' [reactiveValAsync()]. The usual case is a fan-out: one observer starting a
+#' task per item. For a single task derived from inputs, [reactiveAsync()]
+#' with [shiny::bindEvent()] is simpler. A raw [mirai::mirai()] ships only
+#' what you hand it; `mirai_async()` sends the user-defined functions and
+#' objects `expr` refers to, and the functions they call, along
+#' automatically, and attaches the packages it uses.
 #'
 #' Reactive reads in `expr` (`input$x`, `data()`) and `req()`, `validate()`,
 #' `invalidateLater()` and `isolate()` calls are evaluated on the session
@@ -31,16 +33,16 @@
 #' if (interactive()) {
 #'   library(shiny)
 #'   server <- function(input, output, session) {
-#'     pool_async(workers = 2)
-#'
-#'     ranking <- reactiveValAsync()
+#'     # One forecast per spot, fetched in parallel on each refresh.
+#'     forecasts <- lapply(spots, function(spot) reactiveValAsync())
 #'     observe({
-#'       # rank_spots() and the helpers it calls are shipped to the worker.
-#'       ranking(mirai_async(rank_spots(spots, days = input$days)))
-#'     }) |> bindEvent(input$rank)
+#'       for (i in seq_along(spots)) {
+#'         # fetch_marine() and its helpers are shipped to the worker.
+#'         forecasts[[i]](mirai_async(fetch_marine(spots[[i]], days = input$days)))
+#'       }
+#'     }) |> bindEvent(input$refresh)
 #'
-#'     output$ranking <- renderTable(ranking())
-#'     output$status  <- renderText(status_async(ranking))
+#'     output$table <- renderTable(do.call(rbind, lapply(forecasts, function(f) f())))
 #'   }
 #' }
 mirai_async <- function(expr, ..., globals = NULL, env = parent.frame(), quoted = FALSE) {
