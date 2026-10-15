@@ -323,7 +323,7 @@ that worker find it already attached.
 
 ## Status and feedback wanted
 
-Experimental. 0.1.0 is the first usable release; the API may still change until the package is published to CRAN. See [NEWS.md](NEWS.md) for changes.
+Experimental. The API may still change until the package is published to CRAN. See [NEWS.md](NEWS.md) for changes.
 
 The package is not on CRAN yet on purpose. Dependency capture rewrites your expression, and real apps are the best way to find the cases it gets wrong. If you try it, please report:
 

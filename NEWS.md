@@ -1,4 +1,4 @@
-# shinyasync (development version)
+# shinyasync 0.2.0
 
 * New vignette, `vignette("testing")`, on testing async reactives with
   `shiny::testServer()`: a few lines pump the event loop and the mock session
