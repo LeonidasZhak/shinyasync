@@ -23,6 +23,7 @@ observeAsync <- function(expr, ..., globals = NULL, label = NULL,
 
   domain <- list(...)$domain %||% shiny::getDefaultReactiveDomain()
   task <- new_async_task("latest", label, domain = domain)
+  task$kind <- "observeAsync"
   capture <- new_capture(expr, env, globals)
   task$capture <- capture
 

@@ -66,3 +66,35 @@ test_that("observeAsync and reactiveValAsync print their status", {
   out <- capture.output(print(v))
   expect_equal(out, c("<reactiveValAsync> reactiveValAsync", "Status: idle"))
 })
+
+test_that("in devmode a task prints itself once, on its first run", {
+  local_plain_cli()
+  local_pool()
+  withr::local_envvar(TESTTHAT = "")
+  withr::local_options(shiny.devmode = TRUE)
+  out <- capture.output(suppressMessages(
+    shiny::testServer(function(input, output, session) {
+      r <- reactiveAsync(input$n * 2)
+      output$x <- shiny::renderText(r())
+    }, {
+      session$setInputs(n = 1)
+      wait_for(function() identical(peek(r), 2), session)
+      session$setInputs(n = 2)
+      wait_for(function() identical(peek(r), 4), session)
+    })
+  ))
+  expect_equal(sum(grepl("^<reactiveAsync>", out)), 1L)
+  expect_true(any(grepl("`input$n`", out, fixed = TRUE)))
+
+  withr::local_options(shinyasync.print = FALSE)
+  out <- capture.output(
+    shiny::testServer(function(input, output, session) {
+      r <- reactiveAsync(input$n * 2)
+      output$x <- shiny::renderText(r())
+    }, {
+      session$setInputs(n = 1)
+      wait_for(function() identical(peek(r), 2), session)
+    })
+  )
+  expect_false(any(grepl("<reactiveAsync>", out)))
+})

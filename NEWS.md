@@ -7,7 +7,9 @@
   capture resolved: the calls evaluated on the session, the objects and
   packages shipped to the worker, and the rewritten worker expression, or the
   error that stops the expression being sent. Nothing is evaluated and the
-  task is not started, so it is safe anywhere in a server function (#5).
+  task is not started, so it is safe anywhere in a server function. In
+  `shiny::devmode()` each async reactive prints itself on its first run;
+  `options(shinyasync.print = FALSE)` turns that off (#5).
 * `pool_async()` is now optional. The first task that runs while no daemons
   are set starts a pool with the defaults, with a message, held by the
   session it runs in. Previously each task warned and ran in a fresh process.

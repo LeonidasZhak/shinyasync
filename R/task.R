@@ -11,6 +11,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   st <- new.env(parent = emptyenv())
 
   st$label <- label
+  st$kind <- "reactiveValAsync"
   st$status <- shiny::reactiveVal("idle", label = paste0(label, "$status"))
   # Wrapped in a list so that NULL results are distinguishable from "no value".
   st$value <- shiny::reactiveVal(NULL, label = paste0(label, "$value"))
@@ -196,6 +197,7 @@ run_trigger <- function(task, capture) {
     task$fail(e)
     NULL
   })
+  devmode_print(task)
   if (!is.null(job)) task$invoke(job)
   # Never return the mirai: shiny would treat the observer as async and close
   # the session if the task is rejected or cancelled.

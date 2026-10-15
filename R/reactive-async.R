@@ -22,7 +22,9 @@
 #' session and used by `expr` are attached in the worker. `print()` shows the
 #' split: the calls evaluated on the session, the objects and packages shipped
 #' to the worker, and the rewritten worker expression, without evaluating
-#' anything or starting the task.
+#' anything or starting the task. In [shiny::devmode()] each async reactive
+#' prints itself on its first run; `options(shinyasync.print = FALSE)` turns
+#' that off.
 #'
 #' An async reactive can read another one, and the chain stays consistent as
 #' a chain of [shiny::reactive()] expressions does: while an upstream task is
@@ -88,6 +90,7 @@ reactiveAsync <- function(expr, mode = c("latest", "queue"), globals = NULL,
   label <- label %||% default_label("reactiveAsync", expr)
 
   task <- new_async_task(mode, label)
+  task$kind <- "reactiveAsync"
   capture <- new_capture(expr, env, globals)
   task$capture <- capture
 

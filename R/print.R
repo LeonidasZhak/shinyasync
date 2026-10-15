@@ -6,26 +6,40 @@
 # is safe at any point in a server function.
 
 #' @export
-print.reactiveAsync <- function(x, ...) print_async(x, "reactiveAsync")
+print.reactiveAsync <- function(x, ...) print_async(x)
 
 #' @export
-print.observeAsync <- function(x, ...) print_async(x, "observeAsync")
+print.observeAsync <- function(x, ...) print_async(x)
 
 #' @export
-print.reactiveValAsync <- function(x, ...) print_async(x, "reactiveValAsync")
+print.reactiveValAsync <- function(x, ...) print_async(x)
 
-print_async <- function(x, what) {
-  task <- attr(x, "shinyasync", exact = TRUE)
+print_async <- function(x) {
+  print_task(attr(x, "shinyasync", exact = TRUE))
+  invisible(x)
+}
+
+# In shiny::devmode(), each task prints itself on its first run, when the
+# analysis is final. options(shinyasync.print = FALSE) turns it off.
+devmode_print <- function(task) {
+  if (isTRUE(task$printed)) return(invisible())
+  task$printed <- TRUE
+  on <- shiny::get_devmode_option("shinyasync.print", default = FALSE)
+  if (isTRUE(on)) print_task(task)
+  invisible()
+}
+
+print_task <- function(task) {
   status <- shiny::isolate(task$status())
-  cli::cat_line(cli::format_inline("{.cls {what}} {task$label}"))
+  cli::cat_line(cli::format_inline("{.cls {task$kind}} {task$label}"))
   cli::cat_line("Status: ", style_status(status))
 
-  if (is.null(task$capture)) return(invisible(x))
+  if (is.null(task$capture)) return(invisible())
   d <- task$capture$describe()
   if (!is.null(d$error)) {
     cli::cat_line(cli::col_red(cli::symbol$cross), " ", d$error)
   }
-  if (is.null(d$hoisted)) return(invisible(x))
+  if (is.null(d$hoisted)) return(invisible())
 
   print_section(
     "Evaluated on the session",
@@ -49,7 +63,7 @@ print_async <- function(x, what) {
   expr <- d$expr
   if (is.call(expr) && identical(expr[[1]], quote(`{`)) && length(expr) == 2L) expr <- expr[[2]]
   print_section("Worker expression", deparse(expr, width.cutoff = 70L), bullets = FALSE)
-  invisible(x)
+  invisible()
 }
 
 print_section <- function(title, lines, bullets = TRUE) {
