@@ -14,14 +14,11 @@ test_that("print() lists hoisted calls, shipped objects and the worker expressio
   }, globals = list(extra = letters))
 
   out <- capture.output(print(r))
-  expect_match(out[1], "^<reactiveAsync> reactiveAsync\\(")
-  expect_match(out[2], "^Status: idle$")
-  expect_true(any(grepl("shiny::req(input$n)", out, fixed = TRUE)))
-  expect_true(any(grepl("data()", out, fixed = TRUE)))
-  expect_true(any(grepl("`helper` <function>", out, fixed = TRUE)))
-  expect_true(any(grepl("`sd` <numeric>", out, fixed = TRUE)))
-  expect_true(any(grepl("`extra` <character> from `globals`", out, fixed = TRUE)))
-  expect_true(any(grepl("helper(.sa_2)", out, fixed = TRUE)))
+  expect_match(out[1], "<reactiveAsync> reactiveAsync\\(")
+  expect_match(out[2], "^  status   idle$")
+  expect_true(any(grepl(".sa_1 shiny::req(input$n), .sa_2 data()", out, fixed = TRUE)))
+  expect_true(any(grepl("helper(), sd <numeric>, extra <character> (globals)", out, fixed = TRUE)))
+  expect_true(any(grepl("helper(.sa_2) + sd + stats::rnorm(1)", out, fixed = TRUE)))
   # Printing is not a read: the task has not started.
   expect_equal(attr(r, "shinyasync")$state, "idle")
 })
@@ -39,7 +36,7 @@ test_that("print() reports a capture error instead of raising it", {
   r2 <- reactiveAsync(rv$x <- 1)
   out <- capture.output(print(r2))
   expect_true(any(grepl("assigns to reactive values", out)))
-  expect_false(any(grepl("Worker expression", out)))
+  expect_false(any(grepl("^  worker", out)))
 })
 
 test_that("printing before a reactive is defined does not fix the analysis", {
@@ -59,12 +56,14 @@ test_that("observeAsync and reactiveValAsync print their status", {
   input <- shiny::reactiveValues(n = 5)
   o <- observeAsync(message(input$n), suspended = TRUE)
   out <- capture.output(print(o))
-  expect_match(out[1], "^<observeAsync> observeAsync\\(")
+  expect_match(out[1], "<observeAsync> observeAsync\\(")
   expect_true(any(grepl("input$n", out, fixed = TRUE)))
 
   v <- reactiveValAsync(1)
   out <- capture.output(print(v))
-  expect_equal(out, c("<reactiveValAsync> reactiveValAsync", "Status: idle"))
+  expect_length(out, 2L)
+  expect_match(out[1], "<reactiveValAsync> reactiveValAsync")
+  expect_match(out[2], "^  status   idle$")
 })
 
 test_that("in devmode a task prints itself once, on its first run", {
@@ -83,8 +82,10 @@ test_that("in devmode a task prints itself once, on its first run", {
       wait_for(function() identical(peek(r), 4), session)
     })
   ))
-  expect_equal(sum(grepl("^<reactiveAsync>", out)), 1L)
-  expect_true(any(grepl("`input$n`", out, fixed = TRUE)))
+  expect_equal(sum(grepl("<reactiveAsync>", out)), 1L)
+  expect_true(any(grepl("session  input$n", out, fixed = TRUE)))
+  # The devmode form leaves the worker expression out.
+  expect_false(any(grepl("worker", out)))
 
   withr::local_options(shinyasync.print = FALSE)
   out <- capture.output(

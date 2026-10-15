@@ -254,30 +254,20 @@ An async expression is split in two. Reactive reads that appear literally in it,
 `print(r)` shows the split for an async reactive: the calls evaluated on the
 session, the objects and packages shipped to the worker, and the rewritten
 worker expression. Nothing is evaluated and the task is not started. In
-`shiny::devmode()` each async reactive prints itself on its first run, so the
-console shows what every task shipped as the app starts; set
-`options(shinyasync.print = FALSE)` to turn that off.
+`shiny::devmode()` each async reactive prints itself on its first run, without
+the worker expression, so the console shows what every task shipped as the
+app starts; set `options(shinyasync.print = FALSE)` to turn that off.
 
 ```r
 simulate <- function(n, sd) density(rnorm(n, sd = sd))
 r <- reactiveAsync(simulate(input$n, sd = sd))
 print(r)
-#> <reactiveAsync> reactiveAsync(simulate(input$n, sd = sd))
-#> Status: idle
-#> Evaluated on the session
-#>   • `input$n`
-#> Shipped to the worker
-#>   • `sd` <numeric>
-#>   • `simulate` <function>
-#> Attached in the worker
-#>   • stats
-#> Worker expression
-#>   {
-#>       for (.sa_pkg in "stats") {
-#>           suppressPackageStartupMessages(library(.sa_pkg, character.only = TRUE))
-#>       }
-#>       simulate(.sa_1, sd = sd)
-#>   }
+#> ── <reactiveAsync> reactiveAsync(simulate(input$n, sd = sd)) ────────────
+#>   status   idle
+#>   session  .sa_1 input$n
+#>   shipped  sd <numeric>, simulate()
+#>   attached stats
+#>   worker   simulate(.sa_1, sd = sd)
 ```
 
 Limits that follow from this:

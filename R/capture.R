@@ -105,7 +105,7 @@ new_capture <- function(expr, env, globals = NULL) {
       shipped = deps$values,
       globals = globals,
       pkgs = deps$pkgs,
-      expr = worker_expr(a$expr, deps$pkgs),
+      expr = a$expr,
       error = deps$error
     )
   }

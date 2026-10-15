@@ -20,61 +20,79 @@ print_async <- function(x) {
 }
 
 # In shiny::devmode(), each task prints itself on its first run, when the
-# analysis is final. options(shinyasync.print = FALSE) turns it off.
+# analysis is final. The app's own code is on screen then, so the worker
+# expression is left out. options(shinyasync.print = FALSE) turns it off.
 devmode_print <- function(task) {
   if (isTRUE(task$printed)) return(invisible())
   task$printed <- TRUE
   on <- shiny::get_devmode_option("shinyasync.print", default = FALSE)
-  if (isTRUE(on)) print_task(task)
+  if (isTRUE(on)) print_task(task, expr = FALSE)
   invisible()
 }
 
-print_task <- function(task) {
-  status <- shiny::isolate(task$status())
-  cli::cat_line(cli::format_inline("{.cls {task$kind}} {task$label}"))
-  cli::cat_line("Status: ", style_status(status))
-
+print_task <- function(task, expr = TRUE) {
+  header <- cli::format_inline("{.cls {task$kind}} {task$label}")
+  header <- cli::ansi_strtrim(header, cli::console_width() - 6L)
+  cli::cat_line(cli::rule(left = header))
+  print_field("status", style_status(shiny::isolate(task$status())))
   if (is.null(task$capture)) return(invisible())
+
   d <- task$capture$describe()
   if (!is.null(d$error)) {
-    cli::cat_line(cli::col_red(cli::symbol$cross), " ", d$error)
+    print_field(cli::col_red(cli::symbol$cross), d$error)
   }
   if (is.null(d$hoisted)) return(invisible())
 
-  print_section(
-    "Evaluated on the session",
-    vapply(d$hoisted, function(k) cli::format_inline("{.code {k}}"), "")
-  )
-  shipped <- c(
-    vapply(names(d$shipped), function(nm) {
-      cli::format_inline("{.code {nm}} {.cls {class_of(d$shipped[[nm]])}}")
-    }, ""),
+  # In the full form the placeholders name the reads, so the worker
+  # expression below can be read against them.
+  session <- if (expr && length(d$hoisted)) {
+    paste(cli::col_grey(sprintf(".sa_%d", seq_along(d$hoisted))), d$hoisted)
+  } else {
+    d$hoisted
+  }
+  print_field("session", session)
+  print_field("shipped", c(
+    vapply(names(d$shipped), function(nm) describe_object(nm, d$shipped[[nm]]), ""),
     vapply(names(d$globals), function(nm) {
-      cli::format_inline("{.code {nm}} {.cls {class_of(d$globals[[nm]])}} from {.arg globals}")
+      paste(describe_object(nm, d$globals[[nm]]), cli::col_grey("(globals)"))
     }, "")
-  )
-  print_section("Shipped to the worker", shipped)
-  print_section(
-    "Attached in the worker",
-    vapply(d$pkgs, function(p) cli::format_inline("{.pkg {p}}"), "")
-  )
-  # worker_expr() wraps a package-free expression in a bare `{`; show the
-  # expression as written instead.
-  expr <- d$expr
-  if (is.call(expr) && identical(expr[[1]], quote(`{`)) && length(expr) == 2L) expr <- expr[[2]]
-  print_section("Worker expression", deparse(expr, width.cutoff = 70L), bullets = FALSE)
+  ))
+  if (length(d$pkgs)) print_field("attached", d$pkgs)
+
+  if (expr) {
+    # The statements of a `{` block, one per line, without the braces.
+    e <- d$expr
+    parts <- if (is.call(e) && identical(e[[1]], quote(`{`))) as.list(e)[-1] else list(e)
+    lines <- unlist(lapply(parts, deparse, width.cutoff = 70L))
+    print_field("worker", lines, sep = "\n")
+  }
   invisible()
 }
 
-print_section <- function(title, lines, bullets = TRUE) {
-  cli::cat_line(cli::style_bold(title))
-  if (!length(lines)) {
-    cli::cat_line("  ", cli::col_grey("none"))
-  } else if (bullets) {
-    cli::cat_line("  ", cli::symbol$bullet, " ", lines)
-  } else {
-    cli::cat_line("  ", lines)
+# One aligned line per field, its values comma-separated and wrapped under
+# the value column.
+print_field <- function(name, values, sep = ", ") {
+  key <- cli::style_bold(formatC(name, width = 8L, flag = "-"))
+  if (!length(values)) {
+    cli::cat_line("  ", key, " ", cli::col_grey("none"))
+    return(invisible())
   }
+  if (identical(sep, "\n")) {
+    cli::cat_line("  ", key, " ", values[1])
+    for (v in values[-1]) cli::cat_line(strrep(" ", 11L), v)
+    return(invisible())
+  }
+  text <- paste(values, collapse = sep)
+  width <- max(40L, cli::console_width() - 11L)
+  lines <- cli::ansi_strwrap(text, width = width)
+  cli::cat_line("  ", key, " ", lines[1])
+  for (l in lines[-1]) cli::cat_line(strrep(" ", 11L), l)
+  invisible()
+}
+
+describe_object <- function(name, x) {
+  if (is.function(x)) return(paste0(name, "()"))
+  cli::format_inline("{name} {.cls {class(x)[[1]]}}")
 }
 
 style_status <- function(status) {
@@ -86,5 +104,3 @@ style_status <- function(status) {
     cli::col_grey(status)
   )
 }
-
-class_of <- function(x) if (is.function(x)) "function" else class(x)[[1]]
