@@ -1,0 +1,68 @@
+local_plain_cli <- function(env = parent.frame()) {
+  withr::local_options(cli.num_colors = 1L, cli.unicode = FALSE, .local_envir = env)
+}
+
+test_that("print() lists hoisted calls, shipped objects and the worker expression", {
+  local_plain_cli()
+  input <- shiny::reactiveValues(n = 5)
+  data <- shiny::reactive(1:3)
+  helper <- function(x) x * 2
+  sd <- 1
+  r <- reactiveAsync({
+    shiny::req(input$n)
+    helper(data()) + sd + stats::rnorm(1)
+  }, globals = list(extra = letters))
+
+  out <- capture.output(print(r))
+  expect_match(out[1], "^<reactiveAsync> reactiveAsync\\(")
+  expect_match(out[2], "^Status: idle$")
+  expect_true(any(grepl("shiny::req(input$n)", out, fixed = TRUE)))
+  expect_true(any(grepl("data()", out, fixed = TRUE)))
+  expect_true(any(grepl("`helper` <function>", out, fixed = TRUE)))
+  expect_true(any(grepl("`sd` <numeric>", out, fixed = TRUE)))
+  expect_true(any(grepl("`extra` <character> from `globals`", out, fixed = TRUE)))
+  expect_true(any(grepl("helper(.sa_2)", out, fixed = TRUE)))
+  # Printing is not a read: the task has not started.
+  expect_equal(attr(r, "shinyasync")$state, "idle")
+})
+
+test_that("print() reports a capture error instead of raising it", {
+  local_plain_cli()
+  input <- shiny::reactiveValues(n = 5)
+  r <- reactiveAsync(helper(input$n))
+  # A helper that cannot be shipped because it closes over a reactive object.
+  helper <- function(x) x + input$n
+  rv <- shiny::reactiveValues()
+  out <- capture.output(print(r))
+  expect_true(any(grepl("could not resolve", out)))
+
+  r2 <- reactiveAsync(rv$x <- 1)
+  out <- capture.output(print(r2))
+  expect_true(any(grepl("assigns to reactive values", out)))
+  expect_false(any(grepl("Worker expression", out)))
+})
+
+test_that("printing before a reactive is defined does not fix the analysis", {
+  local_plain_cli()
+  input <- shiny::reactiveValues(n = 5)
+  r <- reactiveAsync(later_reactive() + input$n)
+  task <- attr(r, "shinyasync")
+  out <- capture.output(print(r))
+  expect_false("later_reactive()" %in% task$capture$describe()$hoisted)
+
+  later_reactive <- shiny::reactive(1)
+  expect_true("later_reactive()" %in% task$capture$describe()$hoisted)
+})
+
+test_that("observeAsync and reactiveValAsync print their status", {
+  local_plain_cli()
+  input <- shiny::reactiveValues(n = 5)
+  o <- observeAsync(message(input$n), suspended = TRUE)
+  out <- capture.output(print(o))
+  expect_match(out[1], "^<observeAsync> observeAsync\\(")
+  expect_true(any(grepl("input$n", out, fixed = TRUE)))
+
+  v <- reactiveValAsync(1)
+  out <- capture.output(print(v))
+  expect_equal(out, c("<reactiveValAsync> reactiveValAsync", "Status: idle"))
+})

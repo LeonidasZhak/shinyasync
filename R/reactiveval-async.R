@@ -47,10 +47,3 @@ reactiveValAsync <- function(value = NULL, label = NULL) {
 
   structure(rv, class = c("reactiveValAsync", "reactive", "function"), shinyasync = task)
 }
-
-#' @export
-print.reactiveValAsync <- function(x, ...) {
-  task <- attr(x, "shinyasync")
-  cat("<reactiveValAsync>", shiny::isolate(task$status()), "\n")
-  invisible(x)
-}

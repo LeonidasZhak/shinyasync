@@ -78,7 +78,39 @@ new_capture <- function(expr, env, globals = NULL) {
     )
   }
 
-  list(resolve = resolve, inputs = inputs, upstream = upstream)
+  # What a run would hoist and ship, by name, for print(). Nothing is
+  # evaluated, so it needs no reactive context, and the analysis is not
+  # cached, so printing before a reactive the expression reads is defined
+  # cannot fix a wrong classification into the first real run. Analysis and
+  # resolution errors are returned rather than raised: they are what the
+  # caller is trying to diagnose.
+  describe <- function() {
+    a <- tryCatch(analysis %||% analyze_expr(expr, env), error = identity)
+    if (inherits(a, "error")) {
+      return(list(error = conditionMessage(a)))
+    }
+    skip <- c(a$placeholders, names(globals))
+    deps <- tryCatch(
+      collect_globals(
+        setdiff(a$free, skip), env,
+        soft = setdiff(a$soft, skip), cache = fn_cache
+      ),
+      error = identity
+    )
+    if (inherits(deps, "error")) {
+      deps <- list(values = list(), pkgs = character(), error = conditionMessage(deps))
+    }
+    list(
+      hoisted = a$keys,
+      shipped = deps$values,
+      globals = globals,
+      pkgs = deps$pkgs,
+      expr = worker_expr(a$expr, deps$pkgs),
+      error = deps$error
+    )
+  }
+
+  list(resolve = resolve, inputs = inputs, upstream = upstream, describe = describe)
 }
 
 # Rewrite `expr` for the worker. Returns the rewritten expression, the hoisted

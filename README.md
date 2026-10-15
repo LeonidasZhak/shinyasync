@@ -251,6 +251,32 @@ Starts a `mirai` daemon pool shared by every session in the R process. Optional:
 
 An async expression is split in two. Reactive reads that appear literally in it, such as `input$x`, `input[["x"]]`, `rv$y`, `data()` or `mod$data()`, are evaluated on the session thread, where they register dependencies as usual. Their values, together with any user-defined functions and objects the expression refers to, are sent to a worker that evaluates the rest. Packages attached in the session and used by the expression are attached in the worker.
 
+`print(r)` shows the split for an async reactive: the calls evaluated on the
+session, the objects and packages shipped to the worker, and the rewritten
+worker expression. Nothing is evaluated and the task is not started.
+
+```r
+simulate <- function(n, sd) density(rnorm(n, sd = sd))
+r <- reactiveAsync(simulate(input$n, sd = sd))
+print(r)
+#> <reactiveAsync> reactiveAsync(simulate(input$n, sd = sd))
+#> Status: idle
+#> Evaluated on the session
+#>   • `input$n`
+#> Shipped to the worker
+#>   • `sd` <numeric>
+#>   • `simulate` <function>
+#> Attached in the worker
+#>   • stats
+#> Worker expression
+#>   {
+#>       for (.sa_pkg in "stats") {
+#>           suppressPackageStartupMessages(library(.sa_pkg, character.only = TRUE))
+#>       }
+#>       simulate(.sa_1, sd = sd)
+#>   }
+```
+
 Limits that follow from this:
 
 - **Reads must be literal.** Reads inside helper functions or with computed names (`input[[paste0("x", i)]]`) cannot be resolved. Read such values in a separate `reactive()` first, or pass them with `globals = list(...)`.
@@ -282,7 +308,8 @@ Experimental. 0.1.0 is the first usable release; the API may still change until 
 The package is not on CRAN yet on purpose. Dependency capture rewrites your expression, and real apps are the best way to find the cases it gets wrong. If you try it, please report:
 
 - anything that behaves differently from `reactive()`, `observe()` or `reactiveVal()`;
-- expressions that fail in the worker but work in a plain reactive;
+- expressions that fail in the worker but work in a plain reactive, with the
+  output of `print(r)`;
 - results from remote daemon pools or multi-process deployments.
 
 Bugs go in [Issues](https://github.com/dawiegriesel/shinyasync/issues). Questions, design feedback and "it worked for me" reports go in [Discussions](https://github.com/dawiegriesel/shinyasync/discussions).

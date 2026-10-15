@@ -24,6 +24,7 @@ observeAsync <- function(expr, ..., globals = NULL, label = NULL,
   domain <- list(...)$domain %||% shiny::getDefaultReactiveDomain()
   task <- new_async_task("latest", label, domain = domain)
   capture <- new_capture(expr, env, globals)
+  task$capture <- capture
 
   # Nothing reads an observer's result, so a failure would otherwise be lost.
   task$on_error <- function(cond) {
@@ -48,9 +49,3 @@ observeAsync <- function(expr, ..., globals = NULL, label = NULL,
   )
 }
 
-#' @export
-print.observeAsync <- function(x, ...) {
-  task <- attr(x, "shinyasync")
-  cat("<observeAsync>", task$trigger$.label, "\n")
-  invisible(x)
-}

@@ -10,6 +10,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   mode <- match.arg(mode)
   st <- new.env(parent = emptyenv())
 
+  st$label <- label
   st$status <- shiny::reactiveVal("idle", label = paste0(label, "$status"))
   # Wrapped in a list so that NULL results are distinguishable from "no value".
   st$value <- shiny::reactiveVal(NULL, label = paste0(label, "$value"))

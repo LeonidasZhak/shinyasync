@@ -19,7 +19,10 @@
 #'
 #' User-defined functions and objects that `expr` refers to (and functions they
 #' call) are sent along automatically. Packages that are attached in the
-#' session and used by `expr` are attached in the worker.
+#' session and used by `expr` are attached in the worker. `print()` shows the
+#' split: the calls evaluated on the session, the objects and packages shipped
+#' to the worker, and the rewritten worker expression, without evaluating
+#' anything or starting the task.
 #'
 #' An async reactive can read another one, and the chain stays consistent as
 #' a chain of [shiny::reactive()] expressions does: while an upstream task is
