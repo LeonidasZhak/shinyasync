@@ -15,7 +15,10 @@ cancel_async(r)
 }
 \description{
 Stops the running task, if any, and drops queued tasks. The last successful
-value is kept and the status becomes \code{"idle"}. Interrupting a task that is
+value is kept and the status becomes \code{"idle"}, so \code{\link[=has_value_async]{has_value_async()}} stays
+\code{TRUE} and reading the reactive still returns that value. A task gated with
+\code{\link[shiny:bindEvent]{shiny::bindEvent()}} stays in that state until its next event; any other
+task re-runs when a dependency changes. Interrupting a task that is
 already executing requires a daemon pool with a dispatcher, which
 \code{\link[=pool_async]{pool_async()}} always uses; otherwise the result is discarded when it
 arrives.

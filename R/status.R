@@ -64,7 +64,10 @@ has_value_async <- function(r) {
 #' Cancel a running async task
 #'
 #' Stops the running task, if any, and drops queued tasks. The last successful
-#' value is kept and the status becomes `"idle"`. Interrupting a task that is
+#' value is kept and the status becomes `"idle"`, so [has_value_async()] stays
+#' `TRUE` and reading the reactive still returns that value. A task gated with
+#' [shiny::bindEvent()] stays in that state until its next event; any other
+#' task re-runs when a dependency changes. Interrupting a task that is
 #' already executing requires a daemon pool with a dispatcher, which
 #' [pool_async()] always uses; otherwise the result is discarded when it
 #' arrives.

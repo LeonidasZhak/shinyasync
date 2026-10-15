@@ -9,10 +9,13 @@
 #' created inside `expr` or may not run at all; see Limits below.
 #'
 #' The task starts the first time the reactive or its [status_async()] is read,
-#' so a spinner driven by the status is enough to kick it off. While a task
-#' runs, reading the reactive returns the previous value, or halts silently
-#' like `req()` when there is none yet. Errors raised in the worker are
-#' re-thrown when the reactive is read.
+#' so a spinner driven by the status is enough to kick it off. An output in a
+#' hidden tab is suspended and does not read, so a task only it depends on
+#' starts when the tab is opened; use [shiny::outputOptions()] with
+#' `suspendWhenHidden = FALSE` to start it on load. While a task runs, reading
+#' the reactive returns the previous value, or halts silently like `req()`
+#' when there is none yet. Errors raised in the worker are re-thrown when the
+#' reactive is read.
 #'
 #' User-defined functions and objects that `expr` refers to (and functions they
 #' call) are sent along automatically. Packages that are attached in the

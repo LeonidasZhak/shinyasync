@@ -44,10 +44,13 @@ created inside \code{expr} or may not run at all; see Limits below.
 }
 \details{
 The task starts the first time the reactive or its \code{\link[=status_async]{status_async()}} is read,
-so a spinner driven by the status is enough to kick it off. While a task
-runs, reading the reactive returns the previous value, or halts silently
-like \code{req()} when there is none yet. Errors raised in the worker are
-re-thrown when the reactive is read.
+so a spinner driven by the status is enough to kick it off. An output in a
+hidden tab is suspended and does not read, so a task only it depends on
+starts when the tab is opened; use \code{\link[shiny:outputOptions]{shiny::outputOptions()}} with
+\code{suspendWhenHidden = FALSE} to start it on load. While a task runs, reading
+the reactive returns the previous value, or halts silently like \code{req()}
+when there is none yet. Errors raised in the worker are re-thrown when the
+reactive is read.
 
 User-defined functions and objects that \code{expr} refers to (and functions they
 call) are sent along automatically. Packages that are attached in the

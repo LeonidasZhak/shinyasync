@@ -97,6 +97,20 @@ r <- reactiveAsync({ fit_model(input$formula, data()) }) |>
   bindEvent(input$go)
 ```
 
+A cancel button calls `cancel_async(r)`. Afterwards the status is `"idle"`
+while `has_value_async(r)` stays `TRUE`, and the previous result remains on
+screen until the next click starts a new task.
+
+### Hidden outputs
+
+A task starts the first time its reactive or status is read. Shiny suspends
+outputs in hidden tabs, so a task that only hidden outputs read does not start
+until the tab is opened. To start it on load, as in plain Shiny:
+
+```r
+outputOptions(output, "forecast", suspendWhenHidden = FALSE)
+```
+
 ### Debounced input
 
 ```r
@@ -227,7 +241,7 @@ Reactive read that is `TRUE` when reading `r` would return a value rather than h
 
 ### `cancel_async(r)`
 
-Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`.
+Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`, so `has_value_async()` stays `TRUE`; a `bindEvent()` task stays in that state until its next event.
 
 ### `pool_async(workers = NULL, ...)`
 
