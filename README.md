@@ -10,6 +10,10 @@
 
 > Async Shiny reactives on `mirai`, with the standard Shiny API.
 
+> **Warning:** use with caution. This package is not on CRAN yet and its API
+> can still change, including renamed or removed functions, until it is
+> published there. Pin a commit if you depend on it.
+
 `shinyasync` lets you move slow work off the Shiny session thread without changing how you write Shiny. Add `Async` to the reactive primitives you already use and the rest of your app stays the same.
 
 | Shiny            | shinyasync            |
@@ -259,7 +263,7 @@ pool_async(url = "tcp://daemon-host:5555")
 
 ## Status and feedback wanted
 
-Experimental. 0.1.0 is the first usable release; the API may still change before 1.0. See [NEWS.md](NEWS.md) for changes.
+Experimental. 0.1.0 is the first usable release; the API may still change until the package is published to CRAN. See [NEWS.md](NEWS.md) for changes.
 
 The package is not on CRAN yet on purpose. Dependency capture rewrites your expression, and real apps are the best way to find the cases it gets wrong. If you try it, please report:
 
