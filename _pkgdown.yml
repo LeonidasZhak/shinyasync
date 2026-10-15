@@ -10,6 +10,7 @@ reference:
   - reactiveAsync
   - observeAsync
   - reactiveValAsync
+  - mirai_async
 - title: Status and control
   contents:
   - status_async

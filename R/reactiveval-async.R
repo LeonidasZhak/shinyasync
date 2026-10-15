@@ -3,7 +3,8 @@
 #' Like [shiny::reactiveVal()], but the setter also accepts a `mirai` or a
 #' promise. The value updates when the task resolves. Setting a new task while
 #' one is running supersedes the old one: a running `mirai` is cancelled and a
-#' promise's result is ignored.
+#' promise's result is ignored. Use [mirai_async()] to start the task so that
+#' helper functions and reactive reads are captured as in [reactiveAsync()].
 #'
 #' @param value The initial value.
 #' @param label A label for debugging.
@@ -14,8 +15,15 @@
 #' @export
 #' @examples
 #' if (interactive()) {
-#'   v <- reactiveValAsync()
-#'   shiny::observe(v(mirai::mirai(Sys.sleep(1))))
+#'   library(shiny)
+#'   server <- function(input, output, session) {
+#'     pool_async(workers = 2)
+#'     report <- reactiveValAsync()
+#'     observe({
+#'       report(mirai_async(build_report(input$region, input$month)))
+#'     }) |> bindEvent(input$generate)
+#'     output$report <- renderTable(report())
+#'   }
 #' }
 reactiveValAsync <- function(value = NULL, label = NULL) {
   label <- label %||% "reactiveValAsync"

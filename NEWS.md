@@ -1,5 +1,11 @@
 # shinyasync (development version)
 
+* New `mirai_async()` starts a `mirai` with the same dependency capture as
+  `reactiveAsync()`: helper functions, the functions they call, objects and
+  packages are shipped automatically, and reactive reads, `req()` and
+  `invalidateLater()` are evaluated on the session thread. It returns the
+  plain `mirai`, so a `reactiveValAsync()` can be fed without hand-shipping
+  every helper (#4).
 * New `has_value_async()` is `TRUE` when reading an async reactive would
   return a value rather than halt or throw. With `status_async()` it tells a
   first run, which wants a spinner, from a refresh, which wants a "showing

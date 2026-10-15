@@ -122,16 +122,23 @@ r <- reactiveAsync({
 
 ### Manual control
 
+`mirai_async()` starts a task with the same capture as `reactiveAsync()` and
+returns the plain `mirai`, which the `reactiveValAsync()` setter accepts:
+
 ```r
-v <- reactiveValAsync()
+ranking <- reactiveValAsync()
 
 observe({
-  # A raw mirai ships only what you pass it; functions must exist in the worker.
-  v(mirai::mirai(summary(rnorm(n)), n = input$n))   # resolves in the background
-})
+  # rank_spots() and the helpers it calls are shipped to the worker, and
+  # input$days registers a dependency on this observer.
+  ranking(mirai_async(rank_spots(spots, days = input$days)))
+}) |> bindEvent(input$rank)
 
-output$t <- renderPrint(v())
+output$ranking <- renderTable(ranking())
 ```
+
+A raw `mirai::mirai()` works too when you want to ship things yourself; it
+sends only what you pass it.
 
 ### Chained async reactives
 
@@ -208,6 +215,10 @@ Like `observe()`, but `expr` runs in a worker. Returns an observer handle with `
 ### `reactiveValAsync(value = NULL)`
 
 A `reactiveVal` whose setter accepts a `mirai` (or a `promise`). The value updates when the task resolves.
+
+### `mirai_async(expr, ..., globals = NULL)`
+
+Runs `expr` in a worker with the same dependency capture as `reactiveAsync()` and returns the plain `mirai`, for `reactiveValAsync()` or fan-out you collect yourself. Reactive reads and `req()` are evaluated on the session when the call is made, so inside an `observe()` they register on that observer. `...` goes to `mirai::mirai()` (e.g. `.timeout`); extra data goes in `globals`.
 
 ### `status_async(r)`
 

@@ -71,13 +71,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
     st$dispatch(job)
   }
 
-  st$dispatch <- function(job) {
-    warn_if_no_daemons()
-    # mirai() only treats `.expr` as a language object when given a symbol.
-    expr <- job$expr
-    m <- mirai::mirai(.expr = expr, list2env(job$globals), .args = job$args)
-    st$adopt(m, job$inputs)
-  }
+  st$dispatch <- function(job) st$adopt(dispatch_job(job), job$inputs)
 
   # Track any mirai or promise as the current task. `inputs` are stored with
   # the value if this task succeeds.
@@ -182,6 +176,14 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   if (!is.null(domain)) domain$onSessionEnded(st$abandon)
 
   st
+}
+
+# Send a resolved job (see new_capture()) to a worker. `...` goes to mirai().
+dispatch_job <- function(job, ...) {
+  warn_if_no_daemons()
+  # mirai() only treats `.expr` as a language object when given a symbol.
+  expr <- job$expr
+  mirai::mirai(.expr = expr, list2env(job$globals), .args = job$args, ...)
 }
 
 # Session-side failure while preparing a task: surface it like a worker error,

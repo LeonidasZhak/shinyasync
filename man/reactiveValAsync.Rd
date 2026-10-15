@@ -20,11 +20,19 @@ task are re-thrown on read.
 Like \code{\link[shiny:reactiveVal]{shiny::reactiveVal()}}, but the setter also accepts a \code{mirai} or a
 promise. The value updates when the task resolves. Setting a new task while
 one is running supersedes the old one: a running \code{mirai} is cancelled and a
-promise's result is ignored.
+promise's result is ignored. Use \code{\link[=mirai_async]{mirai_async()}} to start the task so that
+helper functions and reactive reads are captured as in \code{\link[=reactiveAsync]{reactiveAsync()}}.
 }
 \examples{
 if (interactive()) {
-  v <- reactiveValAsync()
-  shiny::observe(v(mirai::mirai(Sys.sleep(1))))
+  library(shiny)
+  server <- function(input, output, session) {
+    pool_async(workers = 2)
+    report <- reactiveValAsync()
+    observe({
+      report(mirai_async(build_report(input$region, input$month)))
+    }) |> bindEvent(input$generate)
+    output$report <- renderTable(report())
+  }
 }
 }
