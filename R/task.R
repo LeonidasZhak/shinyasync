@@ -14,7 +14,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   # Wrapped in a list so that NULL results are distinguishable from "no value".
   st$value <- shiny::reactiveVal(NULL, label = paste0(label, "$value"))
   st$error <- shiny::reactiveVal(NULL, label = paste0(label, "$error"))
-  # The reactive reads the current value was computed from; see inputs_async().
+  # The reactive reads the current value was computed from; see is_stale().
   st$inputs <- shiny::reactiveVal(NULL, label = paste0(label, "$inputs"))
   st$state <- "idle"
   st$gen <- 0L

@@ -2,7 +2,7 @@
 #'
 #' Like [shiny::reactive()], but `expr` is evaluated on a `mirai` daemon so the
 #' session stays responsive. Reactive reads that appear in `expr`, such as
-#' `input$x`, `input[["x"]]`, `rv$y` or `data()`, are evaluated on the session
+#' `input$x`, `input[["x"]]`, `rv$y`, `data()` or `mod$data()`, are evaluated on the session
 #' thread, where they register dependencies as usual, and their values are sent
 #' to the worker. Calls to `req()`, `validate()`, `invalidateLater()` and
 #' `isolate()` also run on the session thread, unless they use variables
@@ -17,6 +17,16 @@
 #' User-defined functions and objects that `expr` refers to (and functions they
 #' call) are sent along automatically. Packages that are attached in the
 #' session and used by `expr` are attached in the worker.
+#'
+#' An async reactive can read another one, and the chain stays consistent as
+#' a chain of [shiny::reactive()] expressions does: while an upstream task is
+#' catching up with its own inputs, the downstream keeps its previous value
+#' instead of combining a new `input$x` with an upstream value computed from
+#' the old one, and re-runs once the upstream has settled. Staleness follows
+#' the chain, and an upstream error propagates down it. The one difference
+#' from `reactive()` is an upstream gated with [shiny::bindEvent()]: a
+#' downstream that also reads one of the upstream's inputs waits for the next
+#' event rather than recomputing with the old upstream value.
 #'
 #' @section Limits:
 #' Reactive reads must appear literally in `expr`; reads inside helper
@@ -48,7 +58,7 @@
 #' @param quoted Is `expr` a quoted expression?
 #'
 #' @return A reactive expression of class `"reactiveAsync"`. Use it with
-#'   [status_async()], [has_value_async()], [stale_async()], [cancel_async()]
+#'   [status_async()], [has_value_async()], [cancel_async()]
 #'   and [shiny::bindEvent()].
 #' @export
 #' @examples

@@ -10,15 +10,19 @@
   return a value rather than halt or throw. With `status_async()` it tells a
   first run, which wants a spinner, from a refresh, which wants a "showing
   the previous result" note (#3).
-* New `stale_async()` and `inputs_async()` expose the provenance of a
-  `reactiveAsync()` result: the reactive reads it was computed from. A chained
-  async reactive can guard an upstream read with `req(!stale_async(up))` so
-  it never combines a new input with an upstream value computed from the old
-  one, and re-runs once the upstream catches up. Staleness follows a chain of
-  async reactives and upstream errors propagate through the guard (#2).
-* `status_async()`, `stale_async()` and `inputs_async()` calls inside an async
-  expression are evaluated on the session thread, like reactive reads, when
-  their argument is a name or a literal list field such as `mod$r`.
+* A chained async reactive now waits for its upstream. Each `reactiveAsync()`
+  run records the reactive reads it was computed from; a downstream that
+  reads it keeps its previous value while the upstream is catching up with
+  its own inputs, so it never combines a new input with an upstream value
+  computed from the old one, and re-runs once the upstream has settled.
+  Staleness follows a chain and upstream errors propagate down it, as in a
+  chain of `reactive()` expressions. No guard is needed in the expression (#2).
+* A reactive in a module's returned list, read as `mod$wind()` or
+  `mod[["wind"]]()`, is now hoisted like `wind()`. Previously the list was
+  shipped to the worker and the read failed there.
+* `status_async()` and `has_value_async()` calls inside an async expression
+  are evaluated on the session thread, like reactive reads, when their
+  argument is a name or a literal list field such as `mod$r`.
 * `status_async()` now starts a `reactiveAsync()` that has not run yet, the
   same way reading its value does. Previously a UI that read the value only
   once the status was `"success"` never started the task (#1).

@@ -30,13 +30,13 @@ the worker.}
 }
 \value{
 A reactive expression of class \code{"reactiveAsync"}. Use it with
-\code{\link[=status_async]{status_async()}}, \code{\link[=has_value_async]{has_value_async()}}, \code{\link[=stale_async]{stale_async()}}, \code{\link[=cancel_async]{cancel_async()}}
+\code{\link[=status_async]{status_async()}}, \code{\link[=has_value_async]{has_value_async()}}, \code{\link[=cancel_async]{cancel_async()}}
 and \code{\link[shiny:bindEvent]{shiny::bindEvent()}}.
 }
 \description{
 Like \code{\link[shiny:reactive]{shiny::reactive()}}, but \code{expr} is evaluated on a \code{mirai} daemon so the
 session stays responsive. Reactive reads that appear in \code{expr}, such as
-\code{input$x}, \code{input[["x"]]}, \code{rv$y} or \code{data()}, are evaluated on the session
+\code{input$x}, \code{input[["x"]]}, \code{rv$y}, \code{data()} or \code{mod$data()}, are evaluated on the session
 thread, where they register dependencies as usual, and their values are sent
 to the worker. Calls to \code{req()}, \code{validate()}, \code{invalidateLater()} and
 \code{isolate()} also run on the session thread, unless they use variables
@@ -52,6 +52,16 @@ re-thrown when the reactive is read.
 User-defined functions and objects that \code{expr} refers to (and functions they
 call) are sent along automatically. Packages that are attached in the
 session and used by \code{expr} are attached in the worker.
+
+An async reactive can read another one, and the chain stays consistent as
+a chain of \code{\link[shiny:reactive]{shiny::reactive()}} expressions does: while an upstream task is
+catching up with its own inputs, the downstream keeps its previous value
+instead of combining a new \code{input$x} with an upstream value computed from
+the old one, and re-runs once the upstream has settled. Staleness follows
+the chain, and an upstream error propagates down it. The one difference
+from \code{reactive()} is an upstream gated with \code{\link[shiny:bindEvent]{shiny::bindEvent()}}: a
+downstream that also reads one of the upstream's inputs waits for the next
+event rather than recomputing with the old upstream value.
 }
 \section{Limits}{
 

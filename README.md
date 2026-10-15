@@ -142,24 +142,18 @@ sends only what you pass it.
 
 ### Chained async reactives
 
-An async reactive can read another one. While the upstream task runs its
-reactive returns the previous value, so a downstream expression can briefly see
-a new input next to an upstream value computed from the old one. Guard the
-upstream read with `stale_async()` to wait until it has caught up:
+An async reactive can read another one, exactly as a `reactive()` would:
 
 ```r
-wind <- reactiveAsync(fetch_wind(input$spot))
-
-scored <- reactiveAsync({
-  req(!stale_async(wind))                 # keep the old score until wind matches input$spot
-  score(wind(), input$spot)
-})
+wind   <- reactiveAsync(fetch_wind(input$spot))
+scored <- reactiveAsync(score(wind(), input$spot))
 ```
 
-Staleness follows a chain, so one guard protects the link it is in, and an error
-in `wind` propagates through the guard as it would through `reactive()`.
-`inputs_async(wind)` returns the values `wind()` was computed from, keyed by
-the deparsed read, e.g. `inputs_async(wind)[["input$spot"]]`.
+While `wind` is catching up with a new `input$spot`, `scored` keeps its previous
+value rather than combining the new spot with wind fetched for the old one, and
+re-runs once `wind` has settled. That is what a chain of `reactive()` expressions
+does, so nothing in the expression changes. Staleness follows a chain and an
+error in `wind` propagates down it.
 
 ### Modules
 
@@ -228,10 +222,6 @@ Reactive status of an async reactive: `"idle"`, `"running"`, `"success"` or `"er
 
 Reactive read that is `TRUE` when reading `r` would return a value rather than halt or throw: a result has arrived and the last run did not fail. Combine it with `status_async()` to show a spinner on first load and a "previous result" note during a refresh.
 
-### `stale_async(r)` and `inputs_async(r)`
-
-Provenance of a `reactiveAsync()` result. `inputs_async(r)` is a reactive read of the values the current result was computed from, keyed by the deparsed read (`"input$x"`, `"data()"`), or `NULL` before the first result. `stale_async(r)` is `TRUE` when there is no result yet, when those reads now evaluate to something different, or when an upstream `reactiveAsync()` that `r` reads is itself stale; it is `FALSE` otherwise, including while a task re-runs with the same inputs. Reads inside `isolate()` are not part of the provenance. An error in `r` is re-thrown, as on a read of `r()`.
-
 ### `cancel_async(r)`
 
 Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`.
@@ -242,7 +232,7 @@ Starts a `mirai` daemon pool shared by every session in the R process. The pool 
 
 ## How dependency capture works
 
-An async expression is split in two. Reactive reads that appear literally in it, such as `input$x`, `input[["x"]]`, `rv$y` or `data()`, are evaluated on the session thread, where they register dependencies as usual. Their values, together with any user-defined functions and objects the expression refers to, are sent to a worker that evaluates the rest. Packages attached in the session and used by the expression are attached in the worker.
+An async expression is split in two. Reactive reads that appear literally in it, such as `input$x`, `input[["x"]]`, `rv$y`, `data()` or `mod$data()`, are evaluated on the session thread, where they register dependencies as usual. Their values, together with any user-defined functions and objects the expression refers to, are sent to a worker that evaluates the rest. Packages attached in the session and used by the expression are attached in the worker.
 
 Limits that follow from this:
 
@@ -251,6 +241,7 @@ Limits that follow from this:
 - **`req()` and `validate()` run on the session** only when they are certain to run, i.e. not inside `if`, `&&`, `||`, `switch`, loops or functions, and not when they use variables created inside the expression. Otherwise they run in the worker, where a failure keeps the previous value.
 - **Reads inside formulas are hoisted**, so `lm(y ~ input$x)` fits on the value of `input$x` under a placeholder name. Other formula symbols are shipped if they name a plain object in the session.
 - **Assigning to reactive values** (`rv$x <- ...`) inside the expression is an error. Do that in an `observe()` that reads the result.
+- **An upstream `reactiveAsync()` is waited for.** The expression keeps its previous value while an upstream it reads is catching up with its own inputs, and re-runs once it has settled. With an upstream gated by `bindEvent()`, a downstream that also reads one of the upstream's inputs therefore waits for the next event instead of recomputing with the old upstream value; wrap the upstream read in `isolate()` if you want neither the wait nor the dependency.
 
 ## Deployment
 

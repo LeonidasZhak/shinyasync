@@ -10,7 +10,7 @@
 session_fns <- c("req", "validate", "invalidateLater", "isolate")
 # Reactive reads of async objects; hoisted like reactive reads, but not part
 # of a result's provenance since they change without the inputs changing.
-async_fns <- c("status_async", "has_value_async", "stale_async", "inputs_async")
+async_fns <- c("status_async", "has_value_async")
 
 new_capture <- function(expr, env, globals = NULL) {
   if (!is.null(globals) && (!is.list(globals) || is.null(names(globals)) ||
@@ -28,7 +28,7 @@ new_capture <- function(expr, env, globals = NULL) {
   }
 
   # The reactive reads a run depends on, evaluated now: a named list keyed by
-  # the deparsed read. Stored with each result so stale_async() can compare.
+  # the deparsed read. Stored with each result so is_stale() can compare.
   # `args` are the values of the hoisted calls, if they have been evaluated
   # already; only reads nested inside a hoisted call are evaluated here.
   inputs <- function(args = NULL) {
@@ -41,15 +41,15 @@ new_capture <- function(expr, env, globals = NULL) {
     out
   }
 
-  # The reactiveAsync() objects among the tracked reads, so staleness can
-  # follow a chain.
+  # The reactiveAsync() objects among the tracked reads: the upstreams a run
+  # waits for, and the links staleness follows.
   upstream <- function() {
     analyze()
     out <- list()
     for (x in analysis$inputs) {
-      if (!is.call(x) || length(x) != 1L || !is.symbol(x[[1]])) next
-      hit <- lookup(as.character(x[[1]]), env, mode = "function")
-      if (hit$found && inherits(hit$value, "reactiveAsync")) out[[length(out) + 1L]] <- hit$value
+      if (!is.call(x) || length(x) != 1L) next
+      obj <- async_arg_object(x[[1]], env, character())
+      if (inherits(obj, "reactiveAsync")) out[[length(out) + 1L]] <- obj
     }
     out
   }
@@ -58,6 +58,13 @@ new_capture <- function(expr, env, globals = NULL) {
     analyze()
     args <- lapply(analysis$hoisted, eval, envir = env)
     names(args) <- analysis$placeholders
+    # Wait for upstream async reactives to catch up with their own inputs, so
+    # a chain is self-consistent as a chain of reactive() expressions is. The
+    # reads above registered every dependency first, and the halt re-runs
+    # when the upstream settles.
+    for (up in upstream()) {
+      if (is_stale(attr(up, "shinyasync", exact = TRUE))) shiny::req(FALSE)
+    }
     skip <- c(analysis$placeholders, names(globals))
     deps <- collect_globals(
       setdiff(analysis$free, skip), env,
@@ -289,8 +296,13 @@ hoist_kind <- function(x, env, locals) {
     if (hit$found && shiny::is.reactive(hit$value)) return("read")
   }
 
-  # status_async(r), has_value_async(r), stale_async(r), inputs_async(r),
-  # also on `mod$r`
+  # mod$wind(), mod[["wind"]](): a reactive in a module's returned list
+  if (is.call(head) && length(x) == 1L &&
+      shiny::is.reactive(async_arg_object(head, env, locals))) {
+    return("read")
+  }
+
+  # status_async(r), has_value_async(r), also on `mod$r`
   if (length(x) == 2L && !is.null(async_fn_name(head, env, locals))) {
     obj <- async_arg_object(x[[2]], env, locals)
     if (is.environment(attr(obj, "shinyasync", exact = TRUE))) return("async")
@@ -299,9 +311,10 @@ hoist_kind <- function(x, env, locals) {
   shiny_fn_name(head, env, locals)
 }
 
-# The object a status_async()-style call refers to: a symbol, or a literal
-# `$`/`[[` field of a plain list or environment such as a module's return
-# value. NULL when it cannot be resolved without a reactive context.
+# The object a status_async()-style call, or the head of a `mod$wind()` read,
+# refers to: a symbol, or a literal `$`/`[[` field of a plain list or
+# environment such as a module's return value. NULL when it cannot be
+# resolved without a reactive context.
 async_arg_object <- function(arg, env, locals) {
   if (is.symbol(arg)) {
     if (as.character(arg) %in% locals) return(NULL)

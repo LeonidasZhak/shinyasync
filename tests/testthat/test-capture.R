@@ -179,14 +179,14 @@ test_that("provenance tracks plain reads and reads inside req(), not isolated or
   a <- analyze_expr(quote({
     req(input$n, isolate(input$seed))
     k <- isolate(input$m + 1)
-    if (status_async(up) == "success") data() else stale_async(up)
+    if (status_async(up) == "success") data() else has_value_async(up)
   }), environment())
 
   expect_equal(names(a$inputs), c("input$n", "data()"))
   expect_equal(a$inputs[["data()"]], quote(data()))
   has_hoisted <- function(call) any(vapply(a$hoisted, identical, logical(1), call))
   expect_true(has_hoisted(quote(status_async(up))))
-  expect_true(has_hoisted(quote(stale_async(up))))
+  expect_true(has_hoisted(quote(has_value_async(up))))
   expect_false("up" %in% a$free)
 
   cap <- new_capture(quote(input$n + data()), environment())
@@ -207,15 +207,15 @@ test_that("status_async() on a list field or a `[[` read is hoisted; reactive fi
   mod <- list(up = reactiveAsync(1))
   rv <- shiny::reactiveValues(up = 1)
   input <- shiny::reactiveValues(x = 1)
-  a <- analyze_expr(quote(status_async(mod$up) + stale_async(mod[["up"]]) + input[["x"]]), environment())
+  a <- analyze_expr(quote(status_async(mod$up) + has_value_async(mod[["up"]]) + input[["x"]]), environment())
   expect_equal(a$hoisted[[1]], quote(status_async(mod$up)))
-  expect_equal(a$hoisted[[2]], quote(stale_async(mod[["up"]])))
+  expect_equal(a$hoisted[[2]], quote(has_value_async(mod[["up"]])))
   expect_equal(names(a$inputs), "input[[\"x\"]]")
   expect_false("mod" %in% a$free)
   a <- analyze_expr(quote(status_async(rv$up)), environment())
   expect_equal(a$hoisted, list(quote(rv$up)))
 
-  cap <- new_capture(quote(input[["x"]] + stale_async(mod$up)), environment())
+  cap <- new_capture(quote(input[["x"]] + has_value_async(mod$up)), environment())
   expect_identical(cap$upstream(), list())
   cap <- new_capture(quote(mod$up + up2()), environment())
   up2 <- mod$up
@@ -230,4 +230,17 @@ test_that("run inputs reuse the evaluated hoisted values", {
   job <- shiny::isolate(cap$resolve())
   expect_equal(job$inputs, list(`input$n` = 1, `data()` = 2))
   expect_equal(calls, 1)
+})
+
+test_that("a reactive in a module's returned list is hoisted as a read", {
+  mod <- list(wind = shiny::reactive(1), up = reactiveAsync(2))
+  a <- analyze_expr(quote(mod$wind() + mod[["up"]]()), environment())
+  expect_equal(a$hoisted, list(quote(mod$wind()), quote(mod[["up"]]())))
+  expect_equal(names(a$inputs), c("mod$wind()", "mod[[\"up\"]]()"))
+  expect_false("mod" %in% a$free)
+
+  cap <- new_capture(quote(mod$wind() + mod$up()), environment())
+  expect_identical(cap$upstream(), list(mod$up))
+  a <- analyze_expr(quote(sapply(1:2, function(mod) mod$wind())), environment())
+  expect_length(a$hoisted, 0)
 })
