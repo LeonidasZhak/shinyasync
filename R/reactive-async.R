@@ -65,7 +65,6 @@
 #' if (interactive()) {
 #'   library(shiny)
 #'   server <- function(input, output, session) {
-#'     pool_async(workers = 2)
 #'     r <- reactiveAsync({
 #'       Sys.sleep(1)
 #'       rnorm(input$n)

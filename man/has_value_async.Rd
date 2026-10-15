@@ -37,7 +37,6 @@ did not fail.
 if (interactive()) {
   library(shiny)
   server <- function(input, output, session) {
-    pool_async(workers = 2)
     forecast <- reactiveAsync(fetch_forecast(input$spot))
     output$forecast <- renderTable(forecast())
     output$note <- renderUI({

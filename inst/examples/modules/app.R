@@ -35,7 +35,7 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  pool_async(workers = 2)               # one call for the whole app is enough
+  pool_async(workers = 2)               # optional: sizes the pool for the whole app
 
   left  <- densityServer("left", sd = 1)
   right <- densityServer("right", sd = 3)

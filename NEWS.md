@@ -1,5 +1,8 @@
 # shinyasync (development version)
 
+* `pool_async()` is now optional. The first task that runs while no daemons
+  are set starts a pool with the defaults, with a message, held by the
+  session it runs in. Previously each task warned and ran in a fresh process.
 * New `mirai_async()` starts a `mirai` with the same dependency capture as
   `reactiveAsync()`: helper functions, the functions they call, objects and
   packages are shipped automatically, and reactive reads, `req()` and

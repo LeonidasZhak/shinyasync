@@ -57,8 +57,6 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  pool_async(workers = 4)             # daemons shared by all sessions in this process
-
   r <- reactiveAsync({
     x <- rnorm(input$n)               # runs in a worker, not the session
     density(x)
@@ -71,7 +69,7 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-Drag the slider: the previous density stays on screen while the new one computes, and other users of the app are never blocked.
+Drag the slider: the previous density stays on screen while the new one computes, and other users of the app are never blocked. The first task starts a daemon pool shared by every session in the process; call `pool_async()` to size it.
 
 ### Spinner or previous result
 
@@ -120,25 +118,28 @@ r <- reactiveAsync({
 })
 ```
 
-### Manual control
+### Manual control and fan-out
 
-`mirai_async()` starts a task with the same capture as `reactiveAsync()` and
-returns the plain `mirai`, which the `reactiveValAsync()` setter accepts:
+`reactiveValAsync()` is the imperative counterpart: a value you set from an
+observer rather than derive, as with `reactiveVal()`. `mirai_async()` starts a
+task with the same capture as `reactiveAsync()` and returns the plain `mirai`
+its setter accepts, so one observer can start a task per item:
 
 ```r
-ranking <- reactiveValAsync()
+forecasts <- lapply(spots, function(spot) reactiveValAsync())
 
 observe({
-  # rank_spots() and the helpers it calls are shipped to the worker, and
-  # input$days registers a dependency on this observer.
-  ranking(mirai_async(rank_spots(spots, days = input$days)))
-}) |> bindEvent(input$rank)
+  for (i in seq_along(spots)) {
+    # fetch_marine() and its helpers are shipped; input$days is a dependency.
+    forecasts[[i]](mirai_async(fetch_marine(spots[[i]], days = input$days)))
+  }
+}) |> bindEvent(input$refresh)
 
-output$ranking <- renderTable(ranking())
+output$table <- renderTable(do.call(rbind, lapply(forecasts, function(f) f())))
 ```
 
-A raw `mirai::mirai()` works too when you want to ship things yourself; it
-sends only what you pass it.
+For a single button-triggered task, `reactiveAsync() |> bindEvent()` above is
+all you need.
 
 ### Chained async reactives
 
@@ -157,7 +158,7 @@ error in `wind` propagates down it.
 
 ### Modules
 
-Nothing changes inside `moduleServer()`: the namespaced `input` and the module's local objects are captured like any others, and the async reactive can be returned to the caller. Call `pool_async()` once in the top-level server.
+Nothing changes inside `moduleServer()`: the namespaced `input` and the module's local objects are captured like any others, and the async reactive can be returned to the caller.
 
 ```r
 densityServer <- function(id, sd = 1) {
@@ -173,8 +174,6 @@ densityServer <- function(id, sd = 1) {
 }
 
 server <- function(input, output, session) {
-  pool_async(workers = 2)
-
   left  <- densityServer("left", sd = 1)
   right <- densityServer("right", sd = 3)
 
@@ -212,7 +211,7 @@ A `reactiveVal` whose setter accepts a `mirai` (or a `promise`). The value updat
 
 ### `mirai_async(expr, ..., globals = NULL)`
 
-Runs `expr` in a worker with the same dependency capture as `reactiveAsync()` and returns the plain `mirai`, for `reactiveValAsync()` or fan-out you collect yourself. Reactive reads and `req()` are evaluated on the session when the call is made, so inside an `observe()` they register on that observer. `...` goes to `mirai::mirai()` (e.g. `.timeout`); extra data goes in `globals`.
+Runs `expr` in a worker with the same dependency capture as `reactiveAsync()` and returns the plain `mirai`, to set on a `reactiveValAsync()`, typically one per item in a fan-out. Reactive reads and `req()` are evaluated on the session when the call is made, so inside an `observe()` they register on that observer. `...` goes to `mirai::mirai()` (e.g. `.timeout`); extra data goes in `globals`.
 
 ### `status_async(r)`
 
@@ -228,7 +227,7 @@ Stops the running task, if any, and drops queued tasks. The last successful valu
 
 ### `pool_async(workers = NULL, ...)`
 
-Starts a `mirai` daemon pool shared by every session in the R process. The pool is reference-counted: each session that calls it holds it until the session ends, a call outside a session holds it until the app stops, and the pool shuts down when the last holder releases it. Arguments pass through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. If you already manage `daemons()` yourself, skip this.
+Starts a `mirai` daemon pool shared by every session in the R process. Optional: the first task that runs without daemons starts one with the defaults and says so. The pool is reference-counted: each session that calls it holds it until the session ends, a call outside a session holds it until the app stops, and the pool shuts down when the last holder releases it. Arguments pass through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. If you already manage `daemons()` yourself, skip this.
 
 ## How dependency capture works
 
@@ -245,7 +244,7 @@ Limits that follow from this:
 
 ## Deployment
 
-`shinyasync` is deployment-agnostic. Each R process gets its own daemon pool, so under a multi-process load balancer such as [faucet](https://github.com/ixpantia/faucet) or Posit Connect you should size `workers` so that `processes × workers` fits the host, or point every process at one shared remote daemon set:
+`shinyasync` is deployment-agnostic. Each R process gets its own daemon pool, sized to one less than its core count unless you call `pool_async()`, so under a multi-process load balancer such as [faucet](https://github.com/ixpantia/faucet) or Posit Connect you should size `workers` so that `processes × workers` fits the host, or point every process at one shared remote daemon set:
 
 ```r
 pool_async(url = "tcp://daemon-host:5555")

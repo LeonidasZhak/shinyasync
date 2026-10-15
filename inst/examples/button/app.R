@@ -15,8 +15,6 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
-  pool_async(workers = 2)
-
   model <- reactiveAsync({
     fit_model(as.formula(input$formula), mtcars)
   }) |>

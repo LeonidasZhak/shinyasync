@@ -89,7 +89,6 @@ do that in an \code{\link[shiny:observe]{shiny::observe()}} that reads the resul
 if (interactive()) {
   library(shiny)
   server <- function(input, output, session) {
-    pool_async(workers = 2)
     r <- reactiveAsync({
       Sys.sleep(1)
       rnorm(input$n)
