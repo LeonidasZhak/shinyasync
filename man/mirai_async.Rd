@@ -45,6 +45,9 @@ The task starts immediately. Errors while resolving \code{expr} on the session,
 such as a reactive read that cannot be hoisted, are raised by the call;
 errors in the worker arrive as the mirai's error value and are re-thrown
 when a \code{\link[=reactiveValAsync]{reactiveValAsync()}} holding it is read.
+
+In \code{\link[shiny:devmode]{shiny::devmode()}} each call site prints what it captured the first
+time it runs in a session, as \code{\link[=reactiveAsync]{reactiveAsync()}} does on its first run.
 }
 \examples{
 if (interactive()) {

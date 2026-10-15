@@ -22,6 +22,9 @@
 #' errors in the worker arrive as the mirai's error value and are re-thrown
 #' when a [reactiveValAsync()] holding it is read.
 #'
+#' In [shiny::devmode()] each call site prints what it captured the first
+#' time it runs in a session, as [reactiveAsync()] does on its first run.
+#'
 #' @inheritParams reactiveAsync
 #' @param ... Passed to [mirai::mirai()], e.g. `.timeout` or `.compute`. Pass
 #'   data to the worker with `globals`, not here.
@@ -49,5 +52,7 @@ mirai_async <- function(expr, ..., globals = NULL, env = parent.frame(), quoted 
   force(env)
   if (!quoted) expr <- substitute(expr)
   capture <- new_capture(expr, env, globals)
-  dispatch_job(capture$resolve(), ...)
+  m <- dispatch_job(capture$resolve(), ...)
+  devmode_print_call(default_label("mirai_async", expr), capture)
+  m
 }

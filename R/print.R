@@ -30,6 +30,24 @@ devmode_print <- function(task) {
   invisible()
 }
 
+# mirai_async() has no task to hold a printed flag, and a fan-out calls it
+# once per item, so each call site prints once per session.
+print_state <- new.env(parent = emptyenv())
+
+devmode_print_call <- function(label, capture) {
+  on <- shiny::get_devmode_option("shinyasync.print", default = FALSE)
+  if (!isTRUE(on)) return(invisible())
+  session <- shiny::getDefaultReactiveDomain()
+  holder <- if (is.null(session)) print_state else session$userData
+  if (label %in% holder$shinyasync_printed) return(invisible())
+  holder$shinyasync_printed <- c(holder$shinyasync_printed, label)
+  task <- list(
+    kind = "mirai_async", label = label, capture = capture,
+    status = function() "running"
+  )
+  print_task(task, expr = FALSE)
+}
+
 print_task <- function(task, expr = TRUE) {
   header <- cli::format_inline("{.cls {task$kind}} {task$label}")
   header <- cli::ansi_strtrim(header, cli::console_width() - 6L)
