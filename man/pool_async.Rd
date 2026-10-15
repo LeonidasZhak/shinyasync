@@ -32,4 +32,8 @@ remote daemons.
 
 If you already manage \code{\link[mirai:daemons]{mirai::daemons()}} yourself, skip this; calling it
 anyway does nothing.
+
+Tasks run first come, first served across the pool. \code{\link[mirai:status]{mirai::status()}}
+reports the worker count and how many tasks are executing and awaiting a
+worker, for a task monitor that shows why a task has not started.
 }

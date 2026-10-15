@@ -19,6 +19,10 @@ pool_state$announced <- FALSE
 #' If you already manage [mirai::daemons()] yourself, skip this; calling it
 #' anyway does nothing.
 #'
+#' Tasks run first come, first served across the pool. [mirai::status()]
+#' reports the worker count and how many tasks are executing and awaiting a
+#' worker, for a task monitor that shows why a task has not started.
+#'
 #' @param workers Number of local daemons. Defaults to one less than the
 #'   number of cores.
 #' @param ... Passed to [mirai::daemons()], e.g. `url` or `remote` for remote

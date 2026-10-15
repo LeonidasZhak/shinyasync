@@ -301,6 +301,25 @@ and modules.
 pool_async(url = "tcp://daemon-host:5555")
 ```
 
+### Monitoring the pool
+
+Tasks run first come, first served across one pool, so a button-triggered task
+can wait behind background refreshes. `mirai::status()` reports the worker
+count, how many tasks are executing and how many are waiting for a worker, so a
+task monitor can show why something has not started:
+
+```r
+output$pool <- renderText({
+  invalidateLater(1000)
+  s <- mirai::status()
+  sprintf("%d workers, %d running, %d queued",
+          s$connections, s$mirai[["executing"]], s$mirai[["awaiting"]])
+})
+```
+
+Each worker attaches a package the first time a task needs it; later tasks on
+that worker find it already attached.
+
 ## Design notes
 
 - **Standard API first.** No new verbs. If a Shiny idiom works with `reactive()`, it should work here.
