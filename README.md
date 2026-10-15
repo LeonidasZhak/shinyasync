@@ -286,6 +286,13 @@ Limits that follow from this:
 - **Assigning to reactive values** (`rv$x <- ...`) inside the expression is an error. Do that in an `observe()` that reads the result.
 - **An upstream `reactiveAsync()` is waited for.** The expression keeps its previous value while an upstream it reads is catching up with its own inputs, and re-runs once it has settled. With an upstream gated by `bindEvent()`, a downstream that also reads one of the upstream's inputs therefore waits for the next event instead of recomputing with the old upstream value; wrap the upstream read in `isolate()` if you want neither the wait nor the dependency.
 
+## Testing
+
+`shiny::testServer()` works as usual once the test lets the worker finish:
+pump `later::run_now()` and `session$flushReact()` until the status settles.
+`vignette("testing")` has the helper and tests for values, buttons, errors
+and modules.
+
 ## Deployment
 
 `shinyasync` is deployment-agnostic. Each R process gets its own daemon pool, sized to one less than its core count unless you call `pool_async()`, so under a multi-process load balancer such as [faucet](https://github.com/ixpantia/faucet) or Posit Connect you should size `workers` so that `processes × workers` fits the host, or point every process at one shared remote daemon set:

@@ -1,5 +1,8 @@
 # shinyasync (development version)
 
+* New vignette, `vignette("testing")`, on testing async reactives with
+  `shiny::testServer()`: a few lines pump the event loop and the mock session
+  until a task settles, using only the mock session's public methods (#7).
 * `print()` on a `reactiveAsync()` or `observeAsync()` shows what dependency
   capture resolved: the calls evaluated on the session, the objects and
   packages shipped to the worker, and the rewritten worker expression, or the

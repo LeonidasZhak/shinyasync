@@ -1,0 +1,181 @@
+---
+title: "Testing async reactives"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Testing async reactives}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+`shiny::testServer()` works with async reactives as it does with plain ones,
+with one difference: a task runs in a worker, so its result is not there the
+moment you set an input. The test has to let the worker finish and let Shiny
+see the result. This vignette shows the few lines that do that, using only
+the mock session's public methods.
+
+```{r setup}
+library(shiny)
+library(shinyasync)
+library(testthat)
+```
+
+## Daemons
+
+Start a small pool at the top of each test and shut it down when the test
+ends. Tests then run the same whether or not the app under test calls
+`pool_async()`, and never depend on a pool left behind by another test.
+
+```{r pool}
+local_pool <- function(n = 2, env = parent.frame()) {
+  mirai::daemons(n, dispatcher = TRUE)
+  withr::defer(mirai::daemons(0), envir = env)
+}
+```
+
+If a test does not start daemons, the first task starts the default pool with
+a message, held by the mock session, which is also fine for a one-off test.
+
+## Waiting for a result
+
+Two things must happen before a test can read a result. `later::run_now()`
+runs the event loop, which delivers the worker's result to the session.
+`session$flushReact()` then re-runs the reactives that depend on it, as the
+real session would. Repeat both until the condition you care about holds:
+
+```{r wait-for}
+wait_for <- function(cond, session, timeout = 15) {
+  start <- Sys.time()
+  repeat {
+    session$flushReact()
+    if (isTRUE(shiny::isolate(cond()))) return(invisible(TRUE))
+    if (difftime(Sys.time(), start, units = "secs") > timeout) {
+      stop("Timed out waiting for condition.", call. = FALSE)
+    }
+    later::run_now(0.05)
+  }
+}
+```
+
+Put both helpers in `tests/testthat/helper-async.R` and every test file
+sees them.
+
+The condition is any reactive read: the value, `status_async()` or
+`has_value_async()`. The read runs inside `isolate()`, so it does not register
+dependencies, but it still starts a task that has not run yet, the same way an
+output reading the reactive would.
+
+## A first test
+
+The server below fits a model in a worker. Set an input, wait for the status to
+settle, then read the value exactly as you would in a plain Shiny test.
+
+```{r first-test}
+server <- function(input, output, session) {
+  fit <- reactiveAsync({
+    lm(mpg ~ wt, data = mtcars[seq_len(input$rows), ])
+  })
+  output$slope <- renderText(round(coef(fit())[["wt"]], 2))
+}
+
+test_that("the slope updates when the rows change", {
+  local_pool()
+  testServer(server, {
+    session$setInputs(rows = 32)
+    wait_for(function() status_async(fit) == "success", session)
+    expect_equal(output$slope, "-5.34")
+
+    session$setInputs(rows = 10)
+    wait_for(function() output$slope != "-5.34", session)
+    expect_equal(status_async(fit), "success")
+  })
+})
+```
+
+Reading `fit()` before the first result arrives halts silently, as `req()`
+does, so the test waits for the status rather than the value. After the first
+result, reading the value during a refresh returns the previous one; the second
+wait above uses the output changing as its condition for that reason.
+
+## Status, buttons and cancellation
+
+Statuses follow the task. A `bindEvent()` task is `"idle"` until its event,
+`"running"` while the worker has it, and `"success"` or `"error"` after.
+`cancel_async()` returns it to `"idle"` while keeping the last value.
+
+```{r button}
+server <- function(input, output, session) {
+  sim <- reactiveAsync({
+    Sys.sleep(2)
+    mean(rnorm(input$n))
+  }) |> bindEvent(input$go)
+  observe(cancel_async(sim)) |> bindEvent(input$stop)
+}
+
+test_that("a button task runs on click and stops on cancel", {
+  local_pool()
+  testServer(server, {
+    session$setInputs(n = 100)
+    expect_equal(status_async(sim), "idle")
+
+    session$setInputs(go = 1)
+    expect_equal(status_async(sim), "running")
+
+    session$setInputs(stop = 1)
+    expect_equal(status_async(sim), "idle")
+    expect_false(has_value_async(sim))
+  })
+})
+```
+
+`session$setInputs()` flushes the session, so the status is `"running"` as
+soon as the click is set. The cancelled run had not produced a result, so
+there is no previous value to keep and `has_value_async()` is `FALSE`.
+
+## Errors
+
+A failure in the worker surfaces when the reactive is read, as it would from
+`reactive()`. Wait for the status to become `"error"`, then expect the error
+on the read.
+
+```{r errors}
+server <- function(input, output, session) {
+  parsed <- reactiveAsync(jsonlite::fromJSON(input$text))
+}
+
+test_that("a worker error is re-thrown on read", {
+  local_pool()
+  testServer(server, {
+    session$setInputs(text = "{not json")
+    wait_for(function() status_async(parsed) == "error", session)
+    expect_error(parsed(), "lexical error")
+  })
+})
+```
+
+## Modules
+
+Nothing changes for a module: pass the module server to `testServer()` and the
+same helpers apply to the reactives it defines or returns.
+
+```{r modules}
+summaryServer <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    s <- reactiveAsync(summary(mtcars[[input$column]]))
+    output$text <- renderPrint(s())
+    s
+  })
+}
+
+test_that("the module summarises the chosen column", {
+  local_pool()
+  testServer(summaryServer, {
+    session$setInputs(column = "mpg")
+    wait_for(function() has_value_async(s), session)
+    expect_equal(s()[["Max."]], 33.9)
+  })
+})
+```
