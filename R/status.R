@@ -3,7 +3,8 @@
 #' A reactive read of the task status, for spinners and disabled buttons.
 #' Reading the status of a [reactiveAsync()] that has not run yet starts it,
 #' just as reading its value would, so a UI that waits for `"success"` before
-#' reading the value does not wait forever.
+#' reading the value does not wait forever. A [reactiveAsync()] that is waiting
+#' for an upstream async reactive reports `"running"` while that upstream runs.
 #'
 #' @param r An object created by [reactiveAsync()], [observeAsync()] or
 #'   [reactiveValAsync()].
@@ -13,7 +14,7 @@
 status_async <- function(r) {
   task <- get_task(r, "status_async")
   task$start()
-  task$status()
+  task$current_status()
 }
 
 #' Does an async reactive have a value?
@@ -66,7 +67,8 @@ has_value_async <- function(r) {
 #' Stops the running task, if any, and drops queued tasks. The last successful
 #' value is kept and the status becomes `"idle"`, so [has_value_async()] stays
 #' `TRUE` and reading the reactive still returns that value. A task gated with
-#' [shiny::bindEvent()] stays in that state until its next event; any other
+#' [shiny::bindEvent()] stays in that state until its next event, and an event
+#' still waiting for an upstream async reactive is dropped; any other
 #' task re-runs when a dependency changes. Interrupting a task that is
 #' already executing requires a daemon pool with a dispatcher, which
 #' [pool_async()] always uses; otherwise the result is discarded when it

@@ -30,9 +30,14 @@
 #' a chain of [shiny::reactive()] expressions does: while an upstream task is
 #' catching up with its own inputs, the downstream keeps its previous value
 #' instead of combining a new `input$x` with an upstream value computed from
-#' the old one, and re-runs once the upstream has settled. Staleness follows
-#' the chain, and an upstream error propagates down it. The one difference
-#' from `reactive()` is an upstream gated with [shiny::bindEvent()]: a
+#' the old one, reports `"running"` while the upstream runs, and re-runs once
+#' the upstream has settled. In `mode = "latest"` a downstream run already
+#' computing on the old upstream value is dropped; in `mode = "queue"` it
+#' completes. Staleness follows the chain, and an upstream error propagates
+#' down it. A downstream gated with [shiny::bindEvent()] whose event fires
+#' while its upstream is busy runs once the upstream settles, as a
+#' synchronous `reactive()` would have been ready at the click. The one
+#' difference from `reactive()` is an upstream gated with `bindEvent()`: a
 #' downstream that also reads one of the upstream's inputs waits for the next
 #' event rather than recomputing with the old upstream value.
 #'
@@ -115,7 +120,7 @@ reactiveAsync <- function(expr, mode = c("latest", "queue"), globals = NULL,
     if (!task$has_value()) {
       err <- task$error()
       if (!is.null(err)) stop(err)
-      if (identical(task$status(), "running")) {
+      if (identical(task$current_status(), "running")) {
         shiny::req(FALSE, cancelOutput = "progress")
       }
       shiny::req(FALSE)

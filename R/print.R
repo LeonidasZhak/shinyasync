@@ -52,7 +52,7 @@ print_task <- function(task, expr = TRUE) {
   header <- cli::format_inline("{.cls {task$kind}} {task$label}")
   header <- cli::ansi_strtrim(header, cli::console_width() - 6L)
   cli::cat_line(cli::rule(left = header))
-  print_field("status", style_status(shiny::isolate(task$status())))
+  print_field("status", style_status(shiny::isolate(task$current_status())))
   if (is.null(task$capture)) return(invisible())
 
   d <- task$capture$describe()

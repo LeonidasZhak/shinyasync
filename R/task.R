@@ -23,6 +23,12 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   st$current <- NULL
   st$queue <- list()
   st$trigger <- NULL
+  # Set by bindEvent(): the trigger only runs on its event, so a run that
+  # halts on a busy upstream is re-run by a one-shot waiter observer instead
+  # of by the dependencies it registered. See run_trigger().
+  st$bound <- FALSE
+  st$waiting <- FALSE
+  st$waiter <- NULL
   # Called with the condition whenever a task fails; observeAsync() reports it.
   st$on_error <- NULL
   # Starts a lazily created task. reactiveAsync() replaces this with a function
@@ -37,6 +43,16 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
     st$status(status)
   }
   is_running <- function() identical(st$state, "running")
+
+  # The status a reader sees: "running" also while this task waits for an
+  # upstream that is running. Derived from the upstream's status rather than
+  # stored, so it falls back to the settled status as soon as the upstream
+  # stops, however it stops.
+  st$current_status <- function() {
+    status <- st$status()
+    if (identical(status, "running") || !st$waiting) return(status)
+    if (upstream_running(st)) "running" else status
+  }
 
   settled_status <- function() if (is.null(shiny::isolate(st$value()))) "idle" else "success"
 
@@ -78,6 +94,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   # Track any mirai or promise as the current task. `inputs` are stored with
   # the value if this task succeeds.
   st$adopt <- function(x, inputs = NULL) {
+    st$unwait()
     if (!identical(st$current, x)) stop_current()
     st$gen <- gen <- st$gen + 1L
     st$current <- x
@@ -151,13 +168,36 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
     if (is.function(st$on_error)) st$on_error(cond)
   }
 
+  # The run halted because an upstream is stale. In "latest" mode a run on
+  # the old upstream value is dropped, as a changed input would drop it; in
+  # "queue" mode every run completes. Status is derived, see current_status().
+  st$wait <- function() {
+    if (mode == "latest" && is_running()) {
+      stop_current()
+      st$gen <- st$gen + 1L
+      st$error(NULL)
+      set_status(settled_status())
+    }
+    st$waiting <- TRUE
+  }
+
+  st$unwait <- function() {
+    st$waiting <- FALSE
+    if (!is.null(st$waiter)) {
+      st$waiter$destroy()
+      st$waiter <- NULL
+    }
+  }
+
   st$set <- function(value) {
+    st$unwait()
     stop_current()
     st$gen <- st$gen + 1L
     st$succeed(value)
   }
 
   st$cancel <- function() {
+    st$unwait()
     stop_current()
     st$gen <- st$gen + 1L
     st$queue <- list()
@@ -170,6 +210,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
 
   # Drop running and queued work without touching reactive state.
   st$abandon <- function() {
+    st$unwait()
     stop_current()
     st$gen <- st$gen + 1L
     st$queue <- list()
@@ -191,8 +232,19 @@ dispatch_job <- function(job, ...) {
 # Session-side failure while preparing a task: surface it like a worker error,
 # but let req()-style silent errors propagate so the observer halts quietly.
 run_trigger <- function(task, capture) {
+  # One handler: a condition re-thrown from a tryCatch() handler is caught by
+  # the handlers listed after it, so separate class handlers would turn a
+  # silent halt into a failure.
   job <- tryCatch(capture$resolve(), error = function(e) {
-    if (inherits(e, "shiny.silent.error")) stop(e)
+    if (inherits(e, "shinyasync_waiting")) {
+      task$wait()
+      if (task$bound) arm_waiter(task, capture)
+      return(NULL)
+    }
+    if (inherits(e, "shiny.silent.error")) {
+      task$unwait()
+      stop(e)
+    }
     task$cancel()
     task$fail(e)
     NULL
@@ -202,6 +254,26 @@ run_trigger <- function(task, capture) {
   # Never return the mirai: shiny would treat the observer as async and close
   # the session if the task is rejected or cancelled.
   invisible(NULL)
+}
+
+# A bound trigger runs inside isolate(), so the dependencies a waiting halt
+# registered cannot re-run it. Watch the upstreams instead and, once none is
+# stale, run the trigger as the event would have: isolated, with no
+# dependencies. An upstream error counts as settled; run_trigger() fails the
+# task with it.
+arm_waiter <- function(task, capture) {
+  if (!is.null(task$waiter)) return(invisible())
+  task$waiter <- shiny::observe(
+    {
+      settled <- tryCatch(!upstream_stale(capture), error = function(e) TRUE)
+      if (settled) {
+        task$unwait()
+        shiny::isolate(run_trigger(task, capture))
+      }
+    },
+    label = paste0(task$label, "$waiter")
+  )
+  invisible()
 }
 
 task_error <- function(message, data = NULL) {

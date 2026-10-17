@@ -54,17 +54,28 @@ new_capture <- function(expr, env, globals = NULL) {
     out
   }
 
+  # This capture, for upstream_stale(); the list returned below is not built
+  # yet while resolve() is defined.
+  self <- environment()
+
   resolve <- function() {
     analyze()
-    args <- lapply(analysis$hoisted, eval, envir = env)
-    names(args) <- analysis$placeholders
     # Wait for upstream async reactives to catch up with their own inputs, so
-    # a chain is self-consistent as a chain of reactive() expressions is. The
-    # reads above registered every dependency first, and the halt re-runs
-    # when the upstream settles.
-    for (up in upstream()) {
-      if (is_stale(attr(up, "shinyasync", exact = TRUE))) shiny::req(FALSE)
-    }
+    # a chain is self-consistent as a chain of reactive() expressions is. A
+    # halt while an upstream is stale, whether from the upstream read itself
+    # or a req() around it, is a waiting halt; the task reports "running"
+    # while the upstream runs and the trigger re-runs when it settles.
+    args <- lapply(seq_along(analysis$hoisted), function(i) {
+      tryCatch(
+        eval(analysis$hoisted[[i]], env),
+        shiny.silent.error = function(e) {
+          if (analysis$reads_upstream[[i]] && upstream_stale(self)) waiting_halt()
+          stop(e)
+        }
+      )
+    })
+    names(args) <- analysis$placeholders
+    if (upstream_stale(self)) waiting_halt()
     skip <- c(analysis$placeholders, names(globals))
     deps <- collect_globals(
       setdiff(analysis$free, skip), env,
@@ -276,8 +287,22 @@ analyze_expr <- function(expr, env) {
     keys = keys,
     inputs = inputs,
     free = free,
-    soft = setdiff(unique(formula_names), c(free, placeholders))
+    soft = setdiff(unique(formula_names), c(free, placeholders)),
+    reads_upstream = vapply(hoisted, reads_upstream, logical(1), env = env)
   )
+}
+
+# Does a hoisted call read a reactiveAsync(), directly or inside req() and the
+# like? A halt in such a call while that upstream is stale is a wait, not a
+# req() failure.
+reads_upstream <- function(x, env) {
+  if (!is.call(x)) return(FALSE)
+  if (length(x) == 1L &&
+      inherits(async_arg_object(x[[1]], env, character()), "reactiveAsync")) {
+    return(TRUE)
+  }
+  for (j in seq_along(x)[-1]) if (reads_upstream(x[[j]], env)) return(TRUE)
+  FALSE
 }
 
 is_assign <- function(head) {

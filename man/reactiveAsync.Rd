@@ -65,9 +65,14 @@ An async reactive can read another one, and the chain stays consistent as
 a chain of \code{\link[shiny:reactive]{shiny::reactive()}} expressions does: while an upstream task is
 catching up with its own inputs, the downstream keeps its previous value
 instead of combining a new \code{input$x} with an upstream value computed from
-the old one, and re-runs once the upstream has settled. Staleness follows
-the chain, and an upstream error propagates down it. The one difference
-from \code{reactive()} is an upstream gated with \code{\link[shiny:bindEvent]{shiny::bindEvent()}}: a
+the old one, reports \code{"running"} while the upstream runs, and re-runs once
+the upstream has settled. In \code{mode = "latest"} a downstream run already
+computing on the old upstream value is dropped; in \code{mode = "queue"} it
+completes. Staleness follows the chain, and an upstream error propagates
+down it. A downstream gated with \code{\link[shiny:bindEvent]{shiny::bindEvent()}} whose event fires
+while its upstream is busy runs once the upstream settles, as a
+synchronous \code{reactive()} would have been ready at the click. The one
+difference from \code{reactive()} is an upstream gated with \code{bindEvent()}: a
 downstream that also reads one of the upstream's inputs waits for the next
 event rather than recomputing with the old upstream value.
 }

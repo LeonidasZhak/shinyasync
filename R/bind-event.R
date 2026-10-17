@@ -6,6 +6,7 @@
 bindEvent.reactiveAsync <- function(x, ..., ignoreNULL = TRUE, ignoreInit = FALSE,
                                     once = FALSE, label = NULL) {
   task <- get_task(x, "bindEvent")
+  task$bound <- TRUE
   shiny::bindEvent(
     task$trigger, ...,
     ignoreNULL = ignoreNULL, ignoreInit = ignoreInit, once = once, label = label
@@ -17,6 +18,7 @@ bindEvent.reactiveAsync <- function(x, ..., ignoreNULL = TRUE, ignoreInit = FALS
 bindEvent.observeAsync <- function(x, ..., ignoreNULL = TRUE, ignoreInit = FALSE,
                                    once = FALSE, label = NULL) {
   task <- get_task(x, "bindEvent")
+  task$bound <- TRUE
   shiny::bindEvent(
     task$trigger, ...,
     ignoreNULL = ignoreNULL, ignoreInit = ignoreInit, once = once, label = label

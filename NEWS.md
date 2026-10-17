@@ -1,5 +1,14 @@
 # shinyasync (development version)
 
+* A `reactiveAsync()` waiting for an upstream async reactive now reports
+  `"running"` while that upstream runs, so a status-driven spinner shows
+  during the whole refresh, and in `mode = "latest"` a run already computing
+  on the old upstream value is dropped instead of occupying a worker for a
+  result that would be discarded (#14).
+* A downstream gated with `bindEvent()` whose event fires while its upstream
+  async reactive is busy, or before it has started, now runs once the upstream
+  settles. Previously the event was lost: the halt inside `bindEvent()`'s
+  `isolate()` registered no dependency, so nothing re-ran the task (#11).
 * A name assigned inside an async expression now shadows the session object
   only after its assignment, so `data <- data()` reads the reactive and ships
   nothing. Previously the whole expression treated `data` as local, the

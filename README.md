@@ -241,7 +241,7 @@ Reactive read that is `TRUE` when reading `r` would return a value rather than h
 
 ### `cancel_async(r)`
 
-Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`, so `has_value_async()` stays `TRUE`; a `bindEvent()` task stays in that state until its next event.
+Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`, so `has_value_async()` stays `TRUE`; a `bindEvent()` task stays in that state until its next event, and an event still waiting for an upstream async reactive is dropped.
 
 ### `pool_async(workers = NULL, ...)`
 
@@ -278,7 +278,7 @@ Limits that follow from this:
 - **`req()` and `validate()` run on the session** only when they are certain to run, i.e. not inside `if`, `&&`, `||`, `switch`, loops or functions, and not when they use variables created inside the expression. Otherwise they run in the worker, where a failure keeps the previous value.
 - **Reads inside formulas are hoisted**, so `lm(y ~ input$x)` fits on the value of `input$x` under a placeholder name. Other formula symbols are shipped if they name a plain object in the session.
 - **Assigning to reactive values** (`rv$x <- ...`) inside the expression is an error. Do that in an `observe()` that reads the result.
-- **An upstream `reactiveAsync()` is waited for.** The expression keeps its previous value while an upstream it reads is catching up with its own inputs, and re-runs once it has settled. With an upstream gated by `bindEvent()`, a downstream that also reads one of the upstream's inputs therefore waits for the next event instead of recomputing with the old upstream value; wrap the upstream read in `isolate()` if you want neither the wait nor the dependency.
+- **An upstream `reactiveAsync()` is waited for.** The expression keeps its previous value while an upstream it reads is catching up with its own inputs, reports `"running"` while that upstream runs, and re-runs once it has settled. In `mode = "latest"` a run already computing on the old upstream value is dropped. With an upstream gated by `bindEvent()`, a downstream that also reads one of the upstream's inputs therefore waits for the next event instead of recomputing with the old upstream value; wrap the upstream read in `isolate()` if you want neither the wait nor the dependency. A downstream gated by `bindEvent()` whose event fires while its upstream is busy runs once the upstream settles, as a synchronous `reactive()` would have been ready at the click.
 
 ## Testing
 

@@ -30,3 +30,63 @@ test_that("bindEvent works on observeAsync", {
     wait_for(function() o$status() == "success", session)
   })
 })
+
+test_that("a bindEvent() downstream clicked while its upstream is busy runs once it settles", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    data <- reactiveAsync({
+      Sys.sleep(1)
+      paste0("data-", input$file)
+    })
+    fit <- reactiveAsync(paste(data(), input$formula)) |> shiny::bindEvent(input$go)
+    log <- new.env()
+    log$seen <- character()
+    shiny::observe(log$seen <- c(log$seen, fit()))
+  }, {
+    session$setInputs(file = "a", formula = "f")
+    expect_equal(status_async(fit), "idle")
+    expect_equal(peek(fit), "<halted>")
+
+    # Click before the upstream has started: it starts, and the click holds.
+    session$setInputs(go = 1)
+    expect_equal(status_async(fit), "running")
+    expect_equal(status_async(data), "running")
+    wait_for(function() identical(peek(fit), "data-a f"), session)
+    expect_equal(status_async(fit), "success")
+
+    # Click while the upstream is re-running: no stale result, one run after.
+    session$setInputs(file = "b")
+    session$flushReact()
+    session$setInputs(go = 2)
+    expect_equal(status_async(fit), "running")
+    expect_equal(peek(fit), "data-a f")
+    wait_for(function() identical(peek(fit), "data-b f"), session)
+    expect_equal(log$seen, c("data-a f", "data-b f"))
+
+    # Without a click nothing runs, even though the upstream changed.
+    session$setInputs(file = "c")
+    wait_for(function() identical(peek(data), "data-c"), session)
+    expect_equal(peek(fit), "data-b f")
+    expect_equal(status_async(fit), "success")
+  })
+})
+
+test_that("cancel_async() while waiting on an upstream drops the pending click", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    data <- reactiveAsync({
+      Sys.sleep(1)
+      paste0("data-", input$file)
+    })
+    fit <- reactiveAsync(paste(data(), "f")) |> shiny::bindEvent(input$go)
+    output$x <- shiny::renderText(fit())
+  }, {
+    session$setInputs(file = "a", go = 1)
+    expect_equal(status_async(fit), "running")
+    cancel_async(fit)
+    expect_equal(status_async(fit), "idle")
+    wait_for(function() identical(peek(data), "data-a"), session)
+    expect_equal(status_async(fit), "idle")
+    expect_equal(peek(fit), "<halted>")
+  })
+})

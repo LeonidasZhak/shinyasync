@@ -36,7 +36,7 @@ observeAsync <- function(expr, ..., globals = NULL, label = NULL,
 
   structure(
     list(
-      status = function() task$status(),
+      status = function() task$current_status(),
       cancel = function() task$cancel(),
       destroy = function() {
         task$cancel()

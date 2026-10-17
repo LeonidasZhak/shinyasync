@@ -17,5 +17,6 @@ One of \code{"idle"}, \code{"running"}, \code{"success"} or \code{"error"}.
 A reactive read of the task status, for spinners and disabled buttons.
 Reading the status of a \code{\link[=reactiveAsync]{reactiveAsync()}} that has not run yet starts it,
 just as reading its value would, so a UI that waits for \code{"success"} before
-reading the value does not wait forever.
+reading the value does not wait forever. A \code{\link[=reactiveAsync]{reactiveAsync()}} that is waiting
+for an upstream async reactive reports \code{"running"} while that upstream runs.
 }

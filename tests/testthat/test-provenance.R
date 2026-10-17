@@ -244,3 +244,68 @@ test_that("a module's returned async reactive is waited for", {
     expect_equal(log$seen, c("wind-a 1", "wind-b 1"))
   })
 })
+
+test_that("a downstream waiting on its upstream reports running and drops its stale run", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    wind <- reactiveAsync({
+      Sys.sleep(1)
+      paste0("wind-", input$spot)
+    })
+    scored <- reactiveAsync({
+      Sys.sleep(input$wait)
+      paste(wind(), input$spot, input$k)
+    })
+    log <- new.env()
+    log$seen <- character()
+    shiny::observe(log$seen <- c(log$seen, scored()))
+  }, {
+    session$setInputs(spot = "a", k = 1, wait = 0)
+    wait_for(function() identical(peek(scored), "wind-a a 1"), session)
+    expect_equal(status_async(scored), "success")
+
+    # A slow run on the old upstream value starts, then the upstream goes stale.
+    session$setInputs(wait = 2, k = 2)
+    session$flushReact()
+    expect_equal(status_async(scored), "running")
+    session$setInputs(spot = "b")
+    session$flushReact()
+    expect_equal(status_async(scored), "running")
+    expect_true(has_value_async(scored))
+    expect_equal(peek(scored), "wind-a a 1")
+    expect_null(attr(scored, "shinyasync")$current)
+
+    wait_for(function() identical(peek(scored), "wind-b b 2"), session)
+    expect_equal(status_async(scored), "success")
+    expect_false("wind-a a 2" %in% log$seen)
+    expect_false("wind-a b 2" %in% log$seen)
+  })
+})
+
+test_that("waiting status follows the upstream and clears when it settles without a run", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    wind <- reactiveAsync({
+      Sys.sleep(1)
+      paste0("wind-", input$spot)
+    })
+    scored <- reactiveAsync({
+      req(input$ok)
+      paste(wind(), input$spot)
+    })
+    output$x <- shiny::renderText(scored())
+  }, {
+    session$setInputs(spot = "a", ok = TRUE)
+    wait_for(function() identical(peek(scored), "wind-a a"), session)
+    session$setInputs(spot = "b")
+    session$flushReact()
+    expect_equal(status_async(scored), "running")
+    # The req() now halts: no longer waiting, and nothing runs.
+    session$setInputs(ok = NULL)
+    session$flushReact()
+    expect_equal(status_async(scored), "success")
+    wait_for(function() status_async(wind) == "success", session)
+    expect_equal(status_async(scored), "success")
+    expect_equal(peek(scored), "wind-a a")
+  })
+})
