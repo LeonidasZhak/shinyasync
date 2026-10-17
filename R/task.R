@@ -197,11 +197,12 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
   }
 
   st$cancel <- function() {
+    was_waiting <- st$waiting
     st$unwait()
     stop_current()
     st$gen <- st$gen + 1L
     st$queue <- list()
-    if (is_running()) {
+    if (is_running() || was_waiting) {
       st$error(NULL)
       set_status("idle")
     }
@@ -260,7 +261,10 @@ run_trigger <- function(task, capture) {
 # registered cannot re-run it. Watch the upstreams instead and, once none is
 # stale, run the trigger as the event would have: isolated, with no
 # dependencies. An upstream error counts as settled; run_trigger() fails the
-# task with it.
+# task with it. The event lives exactly as long as the status reads "running":
+# if the upstream is stale but not running (its own req() halts, or its own
+# bindEvent() has not fired), the event is dropped, as a reactive() whose
+# req() fails drops it.
 arm_waiter <- function(task, capture) {
   if (!is.null(task$waiter)) return(invisible())
   task$waiter <- shiny::observe(
@@ -269,6 +273,8 @@ arm_waiter <- function(task, capture) {
       if (settled) {
         task$unwait()
         shiny::isolate(run_trigger(task, capture))
+      } else if (!upstream_running(task)) {
+        task$unwait()
       }
     },
     label = paste0(task$label, "$waiter")

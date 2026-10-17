@@ -35,8 +35,9 @@
 #' computing on the old upstream value is dropped; in `mode = "queue"` it
 #' completes. Staleness follows the chain, and an upstream error propagates
 #' down it. A downstream gated with [shiny::bindEvent()] whose event fires
-#' while its upstream is busy runs once the upstream settles, as a
-#' synchronous `reactive()` would have been ready at the click. The one
+#' while its upstream is running runs once the upstream settles, as a
+#' synchronous `reactive()` would have been ready at the click; if the
+#' upstream is stale but not running, the event is dropped. The one
 #' difference from `reactive()` is an upstream gated with `bindEvent()`: a
 #' downstream that also reads one of the upstream's inputs waits for the next
 #' event rather than recomputing with the old upstream value.

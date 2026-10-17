@@ -90,3 +90,54 @@ test_that("cancel_async() while waiting on an upstream drops the pending click",
     expect_equal(peek(fit), "<halted>")
   })
 })
+
+test_that("a pending click is dropped when its upstream is not running", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    data <- reactiveAsync(paste0("data-", input$file)) |> shiny::bindEvent(input$load)
+    fit <- reactiveAsync(paste(data(), "f")) |> shiny::bindEvent(input$go)
+    log <- new.env()
+    log$seen <- character()
+    shiny::observe(log$seen <- c(log$seen, fit()))
+  }, {
+    session$setInputs(file = "a")
+    # The upstream is idle and not going to produce: the click is lost, as
+    # it would be with a reactive() whose req() fails.
+    session$setInputs(go = 1)
+    expect_equal(status_async(fit), "idle")
+    expect_equal(peek(fit), "<halted>")
+    session$setInputs(load = 1)
+    wait_for(function() identical(peek(data), "data-a"), session)
+    wait_for(function() status_async(fit) != "running", session)
+    expect_equal(status_async(fit), "idle")
+    expect_equal(peek(fit), "<halted>")
+    expect_equal(log$seen, character())
+    session$setInputs(go = 2)
+    wait_for(function() identical(peek(fit), "data-a f"), session)
+  })
+})
+
+test_that("cancel_async() on a waiting task with a value reports idle", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    data <- reactiveAsync({
+      Sys.sleep(1)
+      paste0("data-", input$file)
+    })
+    fit <- reactiveAsync(paste(data(), "f")) |> shiny::bindEvent(input$go)
+    output$x <- shiny::renderText(fit())
+  }, {
+    session$setInputs(file = "a", go = 1)
+    wait_for(function() identical(peek(fit), "data-a f"), session)
+    session$setInputs(file = "b")
+    session$flushReact()
+    session$setInputs(go = 2)
+    expect_equal(status_async(fit), "running")
+    cancel_async(fit)
+    expect_equal(status_async(fit), "idle")
+    expect_true(has_value_async(fit))
+    wait_for(function() identical(peek(data), "data-b"), session)
+    expect_equal(status_async(fit), "idle")
+    expect_equal(peek(fit), "data-a f")
+  })
+})
