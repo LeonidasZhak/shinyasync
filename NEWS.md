@@ -1,3 +1,10 @@
+# shinyasync (development version)
+
+* `mirai (>= 2.5.0)` is now required. The code has used `mirai::daemons_set()`
+  (mirai 2.3.0) and the `condition.class` attribute on worker errors (mirai
+  2.5.0) since 0.2.0; with an older mirai a worker-side `req()` became a real
+  error instead of a silent halt (#13).
+
 # shinyasync 0.2.0
 
 * New vignette, `vignette("testing")`, on testing async reactives with
