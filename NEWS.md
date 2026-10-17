@@ -1,5 +1,10 @@
 # shinyasync (development version)
 
+* A name assigned inside an async expression now shadows the session object
+  only after its assignment, so `data <- data()` reads the reactive and ships
+  nothing. Previously the whole expression treated `data` as local, the
+  worker called `utils::data()` and the result was silently wrong, or failed
+  with "could not find function" for other names (#12).
 * `mirai (>= 2.5.0)` is now required. The code has used `mirai::daemons_set()`
   (mirai 2.3.0) and the `condition.class` attribute on worker errors (mirai
   2.5.0) since 0.2.0; with an older mirai a worker-side `req()` became a real

@@ -165,8 +165,8 @@ analyze_expr <- function(expr, env) {
     x
   }
 
-  # `locals`: names bound inside the expression at this point, which shadow
-  # anything in `env`. `conditional`: the call may not run, so session-side
+  # `locals`: names bound inside the expression before this point, which
+  # shadow anything in `env`. `conditional`: the call may not run, so session-side
   # req()/validate() would halt too eagerly. `isolated`: inside isolate().
   walk <- function(x, locals, conditional = FALSE, isolated = FALSE) {
     if (!is.call(x)) return(x)
@@ -176,9 +176,19 @@ analyze_expr <- function(expr, env) {
 
     if (identical(head, quote(quote))) return(x)
 
+    # A block binds names in order: `data <- data()` reads the reactive and
+    # only then shadows it, so a statement sees the locals of those before it.
+    if (identical(head, quote(`{`))) {
+      for (j in rest) {
+        if (is.call(x[[j]])) x[[j]] <- walk(x[[j]], locals, conditional, isolated)
+        locals <- c(locals, local_names(x[[j]]))
+      }
+      return(x)
+    }
+
     if (identical(head, quote(`function`)) && n >= 3L) {
       params <- names(x[[2]])
-      x[[3]] <- walk(x[[3]], c(locals, params, local_names(x[[3]])), TRUE, isolated)
+      x[[3]] <- walk(x[[3]], c(locals, params), TRUE, isolated)
       return(x)
     }
 
@@ -240,6 +250,7 @@ analyze_expr <- function(expr, env) {
     }
     if (identical(head, quote(`for`)) && n == 4L) {
       x <- walk_args(x, 3L, locals, conditional, isolated)
+      if (is.symbol(x[[2]])) locals <- c(locals, as.character(x[[2]]))
       return(walk_args(x, 4L, locals, TRUE, isolated))
     }
     if (identical(head, quote(`while`)) && n == 3L) {
@@ -253,7 +264,7 @@ analyze_expr <- function(expr, env) {
     walk_args(x, rest, locals, conditional, isolated)
   }
 
-  rewritten <- walk(expr, local_names(expr))
+  rewritten <- walk(expr, character())
   # Hoisted calls never use expression locals, so no shadowing to respect here.
   for (x in hoisted) track_reads(x)
   placeholders <- if (length(keys)) paste0(".sa_", seq_along(keys)) else character()

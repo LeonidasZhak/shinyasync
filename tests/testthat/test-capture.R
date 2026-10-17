@@ -244,3 +244,35 @@ test_that("a reactive in a module's returned list is hoisted as a read", {
   a <- analyze_expr(quote(sapply(1:2, function(mod) mod$wind())), environment())
   expect_length(a$hoisted, 0)
 })
+
+test_that("a name becomes local only after its assignment", {
+  data <- shiny::reactive(1:3)
+  wind <- shiny::reactive(2)
+  input <- shiny::reactiveValues(n = 1)
+  a <- analyze_expr(quote({
+    data <- data()
+    for (i in seq_along(data)) wind <- wind() * i
+    input <- list(n = 10)
+    sum(data) * wind + input$n
+  }), environment())
+
+  expect_equal(a$hoisted, list(quote(data()), quote(wind())))
+  expect_false(any(c("data", "wind", "input") %in% a$free))
+  expect_equal(a$expr[[2]], quote(data <- .sa_1))
+})
+
+test_that("a self-shadowing assignment ships nothing and reads the reactive", {
+  local_pool()
+  shiny::testServer(function(input, output, session) {
+    data <- shiny::reactive(c(input$n, input$n))
+    r <- reactiveAsync({
+      data <- data()
+      sum(data)
+    })
+    output$x <- shiny::renderText(r())
+  }, {
+    session$setInputs(n = 4)
+    wait_for(function() identical(peek(r), 8), session)
+    expect_equal(peek(r), 8)
+  })
+})
