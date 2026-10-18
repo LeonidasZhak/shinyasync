@@ -87,7 +87,10 @@ release_pool <- function() {
 # module's session proxy shares its root's userData, so a task dispatched
 # inside moduleServer() counts for the whole session. Outside a session the
 # process holds once, released at app stop.
-ensure_pool <- function() {
+ensure_pool <- function(compute = NULL) {
+  # A named compute profile was set up by the user; the default pool is only
+  # for tasks on the default profile.
+  if (!is.null(compute) && !identical(compute, "default")) return(invisible())
   set <- mirai::daemons_set()
   if (set && !pool_state$owned) return(invisible())  # user-managed daemons
   session <- shiny::getDefaultReactiveDomain()

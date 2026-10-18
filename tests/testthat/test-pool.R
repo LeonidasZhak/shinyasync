@@ -127,3 +127,14 @@ test_that("an explicit pool_async() in server() and the first task hold the pool
     expect_false(mirai::daemons_set())
   })
 })
+
+test_that("a task on a named compute profile does not start the default pool", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  mirai::daemons(1, dispatcher = TRUE, .compute = "other")
+  withr::defer(mirai::daemons(0, .compute = "other"))
+
+  m <- mirai_async(Sys.getpid(), .compute = "other")
+  expect_false(mirai::daemons_set())
+  expect_false(pool_state$owned)
+  expect_type(m[], "integer")
+})

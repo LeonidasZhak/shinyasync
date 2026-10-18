@@ -224,7 +224,7 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
 
 # Send a resolved job (see new_capture()) to a worker. `...` goes to mirai().
 dispatch_job <- function(job, ...) {
-  ensure_pool()
+  ensure_pool(list(...)$.compute)
   # mirai() only treats `.expr` as a language object when given a symbol.
   expr <- job$expr
   mirai::mirai(.expr = expr, list2env(job$globals), .args = job$args, ...)

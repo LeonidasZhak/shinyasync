@@ -1,5 +1,7 @@
 # shinyasync (development version)
 
+* A task on a named mirai compute profile (`mirai_async(.compute = "x")`) no
+  longer starts the default pool (#20).
 * `pool_async()` documents what holds the pool outside an app: a script or
   console call releases it when the next app in the process stops, or at
   process exit (#19).
