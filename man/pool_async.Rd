@@ -4,7 +4,7 @@
 \alias{pool_async}
 \title{Start a daemon pool}
 \usage{
-pool_async(workers = NULL, ...)
+pool_async(workers = NULL, ..., everywhere = NULL)
 }
 \arguments{
 \item{workers}{Number of local daemons. Defaults to one less than the
@@ -12,6 +12,10 @@ number of cores.}
 
 \item{...}{Passed to \code{\link[mirai:daemons]{mirai::daemons()}}, e.g. \code{url} or \code{remote} for remote
 pools. A dispatcher is always used, because cancellation requires one.}
+
+\item{everywhere}{An expression to evaluate once on every worker when the
+pool starts; see the section on preloading. Unevaluated, like the
+expression of \code{\link[=reactiveAsync]{reactiveAsync()}}.}
 }
 \value{
 \code{TRUE} invisibly if this call started or joined a shinyasync pool,
@@ -33,13 +37,56 @@ until the process exits, when the daemons exit with it; call
 You need not call it. The first task that runs while no daemons are set
 starts a pool with the defaults, with a message saying so, and the session
 it runs in holds that pool as if it had called \code{pool_async()}. Call it
-yourself, before any task, to choose the number of workers or to use
-remote daemons.
+yourself, before any task, to choose the number of workers, to use
+remote daemons or to preload the workers.
 
 If you already manage \code{\link[mirai:daemons]{mirai::daemons()}} yourself, skip this; calling it
-anyway does nothing.
+anyway does nothing, except that an \code{everywhere} expression is still loaded
+on your daemons, since you asked for it.
 
 Tasks run first come, first served across the pool. \code{\link[mirai:status]{mirai::status()}}
 reports the worker count and how many tasks are executing and awaiting a
 worker, for a task monitor that shows why a task has not started.
 }
+\section{Preloading the workers}{
+
+Objects an async expression refers to are sent to the worker on every run.
+For a large data frame, a model or a database connection, run the code that
+creates them once on every worker instead, with \code{everywhere}:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{pool_async(workers = 4, everywhere = \{
+  sales <- arrow::read_parquet("data/sales.parquet")  # one copy per worker
+  con <- DBI::dbConnect(RSQLite::SQLite(), "app.db")  # cannot be serialized
+  rates <- fx_rates                                   # shipped once from the session
+\})
+
+sales_by_region <- reactiveAsync(summarise_sales(sales, con, input$region))
+}\if{html}{\out{</div>}}
+
+The expression runs on each worker with \code{\link[mirai:everywhere]{mirai::everywhere()}} when the pool
+starts, before any task, and again if the pool is restarted. Objects it
+refers to, such as \code{fx_rates}, are resolved in the calling environment and
+sent along once, as a task's globals are; packages attached in the session
+and used by the expression are attached on the workers. The names it
+assigns and the objects sent with it are \emph{resident}: dependency capture
+leaves them out of what a task ships, even if the session has an object of
+the same name, and \code{print()} lists them on a \code{resident} line.
+
+Call it at the top level of \code{app.R}, so the preload runs once per process
+and the pool, with its connections, lives until the app stops. Called in
+\code{server()}, the pool is released when the last session ends and preloaded
+again when the next one arrives. One expression per pool: a later call with
+a different \code{everywhere} warns and keeps the first. The lazily started
+default pool has no preload.
+
+Resident data is static: if the session reloads \code{sales}, the workers keep
+their copy. Data that changes belongs in a reactive read, which is sent per
+run. Every worker holds its own copy, so four workers and a 2 GB frame need
+8 GB, and each worker opens its own connection, so three processes of four
+workers hold twelve. Connections are not closed when the pool shuts down:
+the daemon processes exit and the operating system closes them. A daemon
+that connects after the preload ran, as a remote daemon may, does not
+receive it; a task that uses a resident name on such a worker fails with a
+message saying so.
+}
+

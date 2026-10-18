@@ -243,9 +243,9 @@ Reactive read that is `TRUE` when reading `r` would return a value rather than h
 
 Stops the running task, if any, and drops queued tasks. The last successful value is kept and the status becomes `"idle"`, so `has_value_async()` stays `TRUE`; a `bindEvent()` task stays in that state until its next event, and an event still waiting for an upstream async reactive is dropped.
 
-### `pool_async(workers = NULL, ...)`
+### `pool_async(workers = NULL, ..., everywhere = NULL)`
 
-Starts a `mirai` daemon pool shared by every session in the R process. Optional: the first task that runs without daemons starts one with the defaults and says so. The pool is reference-counted: each session that calls it holds it until the session ends, a call outside a session holds it until the app stops, and the pool shuts down when the last holder releases it. Arguments pass through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. If you already manage `daemons()` yourself, skip this.
+Starts a `mirai` daemon pool shared by every session in the R process. Optional: the first task that runs without daemons starts one with the defaults and says so. The pool is reference-counted: each session that calls it holds it until the session ends, a call outside a session holds it until the app stops, and the pool shuts down when the last holder releases it. `...` passes through to `mirai::daemons()`, so remote or TLS-backed pools work as usual. `everywhere` is an expression run once on every worker when the pool starts, for data, models and connections that every task needs; see [Preloading the workers](#preloading-the-workers). If you already manage `daemons()` yourself, skip this.
 
 ## How dependency capture works
 
@@ -278,6 +278,7 @@ Limits that follow from this:
 - **`req()` and `validate()` run on the session** only when they are certain to run, i.e. not inside `if`, `&&`, `||`, `switch`, loops or functions, and not when they use variables created inside the expression. Otherwise they run in the worker, where a failure keeps the previous value.
 - **Reads inside formulas are hoisted**, so `lm(y ~ input$x)` fits on the value of `input$x` under a placeholder name. Other formula symbols are shipped if they name a plain object in the session.
 - **Assigning to reactive values** (`rv$x <- ...`) inside the expression is an error. Do that in an `observe()` that reads the result.
+- **Shipped objects are sent on every run.** A session object the expression refers to is serialized with every task, so a large data frame at the top of `app.R` costs its size on every invalidation. Load such objects once on every worker with `pool_async(everywhere = )` instead; the names it creates are *resident* and left out of what a task ships.
 - **An upstream `reactiveAsync()` is waited for.** The expression keeps its previous value while an upstream it reads is catching up with its own inputs, reports `"running"` while that upstream runs, and re-runs once it has settled. In `mode = "latest"` a run already computing on the old upstream value is dropped. With an upstream gated by `bindEvent()`, a downstream that also reads one of the upstream's inputs therefore waits for the next event instead of recomputing with the old upstream value; wrap the upstream read in `isolate()` if you want neither the wait nor the dependency. A downstream gated by `bindEvent()` whose event fires while its upstream is running runs once the upstream settles, as a synchronous `reactive()` would have been ready at the click; if the upstream is stale but not running, the event is dropped.
 
 ## Testing
@@ -313,6 +314,37 @@ output$pool <- renderText({
 
 Each worker attaches a package the first time a task needs it; later tasks on
 that worker find it already attached.
+
+### Preloading the workers
+
+Objects a task refers to are serialized to the worker on every run, and a
+database connection cannot be serialized at all. Run the code that creates them
+once on every worker instead:
+
+```r
+pool_async(workers = 4, everywhere = {
+  sales <- arrow::read_parquet("data/sales.parquet")  # one copy per worker
+  con <- DBI::dbConnect(RSQLite::SQLite(), "app.db")  # cannot be serialized
+  rates <- fx_rates                                   # shipped once from the session
+})
+
+server <- function(input, output, session) {
+  by_region <- reactiveAsync(summarise_sales(sales, con, input$region))
+}
+```
+
+The expression runs with `mirai::everywhere()` when the pool starts, before any
+task. Objects it refers to are resolved in the calling environment and sent
+once; the names it assigns and those objects are *resident*, so tasks do not
+ship them even when the session holds an object of the same name, and
+`print()` shows them on a `resident` line. Call it at the top level of `app.R`
+so the preload runs once per process and connections live until the app stops.
+Resident data is static: data that changes belongs in a reactive read. Every
+worker holds its own copy and opens its own connection, so size memory and the
+database's connection limit by `processes × workers`. Connections are dropped,
+not closed, when the pool shuts down. A daemon that joins after the preload, as
+a remote daemon may, does not receive it; a task using a resident name there
+fails with a message saying so.
 
 ## Design notes
 

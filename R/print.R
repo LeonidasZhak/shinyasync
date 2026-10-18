@@ -75,6 +75,7 @@ print_task <- function(task, expr = TRUE) {
       paste(describe_object(nm, d$globals[[nm]]), cli::col_grey("(globals)"))
     }, "")
   ))
+  if (length(d$resident)) print_field("resident", d$resident)
   if (length(d$pkgs)) print_field("attached", d$pkgs)
 
   if (expr) {

@@ -76,13 +76,14 @@ new_capture <- function(expr, env, globals = NULL) {
     })
     names(args) <- analysis$placeholders
     if (upstream_stale(self)) waiting_halt()
-    skip <- c(analysis$placeholders, names(globals))
+    resident <- intersect(pool_residents(), c(analysis$free, analysis$soft))
+    skip <- c(analysis$placeholders, names(globals), resident)
     deps <- collect_globals(
       setdiff(analysis$free, skip), env,
       soft = setdiff(analysis$soft, skip), cache = fn_cache
     )
     list(
-      expr = worker_expr(analysis$expr, deps$pkgs),
+      expr = worker_expr(analysis$expr, deps$pkgs, resident),
       args = args,
       globals = c(deps$values, globals),
       inputs = inputs(args)
@@ -100,7 +101,8 @@ new_capture <- function(expr, env, globals = NULL) {
     if (inherits(a, "error")) {
       return(list(error = conditionMessage(a)))
     }
-    skip <- c(a$placeholders, names(globals))
+    resident <- intersect(pool_residents(), c(a$free, a$soft))
+    skip <- c(a$placeholders, names(globals), resident)
     deps <- tryCatch(
       collect_globals(
         setdiff(a$free, skip), env,
@@ -114,6 +116,7 @@ new_capture <- function(expr, env, globals = NULL) {
     list(
       hoisted = a$keys,
       shipped = deps$values,
+      resident = resident,
       globals = globals,
       pkgs = deps$pkgs,
       expr = a$expr,
@@ -531,14 +534,33 @@ free_names <- function(x) {
   codetools::findGlobals(x, merge = TRUE)
 }
 
-worker_expr <- function(expr, pkgs) {
-  if (!length(pkgs)) return(call("{", expr))
-  bquote({
-    for (.sa_pkg in .(pkgs)) {
-      suppressPackageStartupMessages(library(.sa_pkg, character.only = TRUE))
-    }
-    .(expr)
-  })
+# The expression a worker evaluates: `expr` after attaching `pkgs`. Names the
+# pool's preload made resident (see pool_async()) are checked first, so a
+# daemon that joined after the preload fails with the cause rather than with
+# "object not found".
+worker_expr <- function(expr, pkgs, resident = character()) {
+  if (!length(pkgs) && !length(resident)) return(call("{", expr))
+  parts <- list()
+  if (length(resident)) {
+    parts[[length(parts) + 1L]] <- bquote(
+      for (.sa_nm in .(resident)) {
+        if (!exists(.sa_nm, envir = globalenv())) {
+          stop(sprintf(
+            "`%s` was not preloaded on this worker. A daemon that connects after pool_async() ran does not receive its `everywhere` expression.",
+            .sa_nm
+          ), call. = FALSE)
+        }
+      }
+    )
+  }
+  if (length(pkgs)) {
+    parts[[length(parts) + 1L]] <- bquote(
+      for (.sa_pkg in .(pkgs)) {
+        suppressPackageStartupMessages(library(.sa_pkg, character.only = TRUE))
+      }
+    )
+  }
+  as.call(c(quote(`{`), parts, list(expr)))
 }
 
 # Helpers ------------------------------------------------------------------

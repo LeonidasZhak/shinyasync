@@ -99,3 +99,15 @@ test_that("in devmode a task prints itself once, on its first run", {
   )
   expect_false(any(grepl("<reactiveAsync>", out)))
 })
+
+test_that("print lists resident names on their own line", {
+  local_plain_cli()
+  withr::defer(pool_state$preload <- NULL)
+  pool_state$preload <- list(residents = c("sales", "con"))
+  input <- shiny::reactiveValues(region = "west")
+  sales <- data.frame()
+  r <- reactiveAsync(summarise_sales(sales, con, input$region))
+  out <- capture.output(print(r))
+  expect_true(any(grepl("^  resident sales, con$", out)))
+  expect_false(any(grepl("sales <data.frame>", out, fixed = TRUE)))
+})

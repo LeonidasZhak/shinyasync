@@ -1,5 +1,11 @@
 # shinyasync (development version)
 
+* `pool_async()` gains `everywhere`, an expression evaluated once on every
+  worker when the pool starts, for data frames, models and connections that
+  every task needs. Objects it refers to are sent once and packages it uses
+  are attached; the names it creates are resident, so tasks no longer ship
+  them, and `print()` lists them on a `resident` line. The README documents
+  that shipped objects are otherwise serialized on every run (#15).
 * `reactiveValAsync()` is labelled with the name it is assigned to, as
   `shiny::reactiveVal()` is, so values can be told apart in reactlog (#21).
 * A task on a named mirai compute profile (`mirai_async(.compute = "x")`) no

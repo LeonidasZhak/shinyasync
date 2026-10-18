@@ -28,3 +28,12 @@ wait_for <- function(cond, session, timeout = 15) {
 peek <- function(r) {
   tryCatch(shiny::isolate(r()), shiny.silent.error = function(e) "<halted>")
 }
+
+# Return the pool to its initial state between tests that start or hold one.
+reset_pool <- function() {
+  if (mirai::daemons_set()) mirai::daemons(0)
+  pool_state$owned <- FALSE
+  pool_state$refs <- 0L
+  pool_state$preload <- NULL
+  pool_state$shinyasync_holds_pool <- FALSE
+}

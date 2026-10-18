@@ -1,6 +1,6 @@
 test_that("pool_async is shared across sessions and released by the last one", {
   skip_if(mirai::daemons_set(), "daemons already set")
-  withr::defer(if (mirai::daemons_set()) mirai::daemons(0))
+  withr::defer(reset_pool())
 
   s1 <- shiny::MockShinySession$new()
   s2 <- shiny::MockShinySession$new()
@@ -27,11 +27,7 @@ test_that("pool_async leaves user-managed daemons alone", {
 
 test_that("pool_async restarts a pool that was torn down externally", {
   skip_if(mirai::daemons_set(), "daemons already set")
-  withr::defer({
-    if (mirai::daemons_set()) mirai::daemons(0)
-    pool_state$owned <- FALSE
-    pool_state$refs <- 0L
-  })
+  withr::defer(reset_pool())
 
   s1 <- shiny::MockShinySession$new()
   shiny::withReactiveDomain(s1, pool_async(workers = 1))
@@ -49,11 +45,7 @@ test_that("pool_async restarts a pool that was torn down externally", {
 
 test_that("the first task starts a default pool held by its session", {
   skip_if(mirai::daemons_set(), "daemons already set")
-  withr::defer({
-    if (mirai::daemons_set()) mirai::daemons(0)
-    pool_state$owned <- FALSE
-    pool_state$refs <- 0L
-  })
+  withr::defer(reset_pool())
   local_mocked_bindings(default_workers = function() 1L)
 
   shiny::testServer(function(input, output, session) {
@@ -73,11 +65,7 @@ test_that("the first task starts a default pool held by its session", {
 
 test_that("every session that runs a task holds the default pool", {
   skip_if(mirai::daemons_set(), "daemons already set")
-  withr::defer({
-    if (mirai::daemons_set()) mirai::daemons(0)
-    pool_state$owned <- FALSE
-    pool_state$refs <- 0L
-  })
+  withr::defer(reset_pool())
   local_mocked_bindings(default_workers = function() 1L)
 
   run_task <- function(s) {
@@ -109,11 +97,7 @@ test_that("every session that runs a task holds the default pool", {
 
 test_that("an explicit pool_async() in server() and the first task hold the pool once", {
   skip_if(mirai::daemons_set(), "daemons already set")
-  withr::defer({
-    if (mirai::daemons_set()) mirai::daemons(0)
-    pool_state$owned <- FALSE
-    pool_state$refs <- 0L
-  })
+  withr::defer(reset_pool())
 
   shiny::testServer(function(input, output, session) {
     pool_async(workers = 1)
@@ -137,4 +121,72 @@ test_that("a task on a named compute profile does not start the default pool", {
   expect_false(mirai::daemons_set())
   expect_false(pool_state$owned)
   expect_type(m[], "integer")
+})
+
+test_that("everywhere preloads every worker and resident names are not shipped", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer(reset_pool())
+  fx <- 10
+  sales <- "session copy"
+  pool_async(workers = 2, everywhere = {
+    rate <- fx * 2
+    sales <- "worker copy"
+  })
+  expect_setequal(pool_state$preload$residents, c("rate", "sales", "fx"))
+
+  seen <- unlist(lapply(1:4, function(i) mirai_async({ Sys.sleep(0.1); paste(rate, sales, fx) })[]))
+  expect_equal(seen, rep("20 worker copy 10", 4))
+
+  d <- new_capture(quote(summary(rate, sales, fx)), environment())$describe()
+  expect_setequal(d$resident, c("rate", "sales", "fx"))
+  expect_length(d$shipped, 0)
+})
+
+test_that("a restarted pool is preloaded again", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer(reset_pool())
+  s1 <- shiny::MockShinySession$new()
+  shiny::withReactiveDomain(s1, pool_async(workers = 1, everywhere = rate <- 2))
+  expect_equal(mirai_async(rate)[], 2)
+  mirai::daemons(0)
+
+  s2 <- shiny::MockShinySession$new()
+  shiny::withReactiveDomain(s2, pool_async(workers = 1))
+  expect_equal(mirai_async(rate)[], 2)
+})
+
+test_that("everywhere is loaded on user-managed daemons when asked", {
+  local_pool(1)
+  withr::defer(pool_state$preload <- NULL)
+  expect_message(res <- pool_async(everywhere = rate <- 3), "already set")
+  expect_false(res)
+  expect_equal(mirai_async(rate)[], 3)
+})
+
+test_that("a second everywhere is refused with a warning and the same one is accepted", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer(reset_pool())
+  pool_async(workers = 1, everywhere = rate <- 1)
+  expect_no_warning(pool_async(workers = 1, everywhere = rate <- 1))
+  expect_warning(pool_async(workers = 1, everywhere = rate <- 2), "different `everywhere`")
+  expect_equal(mirai_async(rate)[], 1)
+})
+
+test_that("a failing preload is reported", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer(reset_pool())
+  expect_message(
+    {
+      pool_async(workers = 1, everywhere = stop("no such file"))
+      for (i in 1:50) later::run_now(0.1)
+    },
+    "preload failed.*no such file"
+  )
+})
+
+test_that("a task checks for resident names before running", {
+  e <- worker_expr(quote(summary(sales)), character(), resident = "sales")
+  expect_match(paste(deparse(e), collapse = " "), "was not preloaded on this worker")
+  expect_identical(e[[length(e)]], quote(summary(sales)))
+  expect_identical(worker_expr(quote(1), character()), quote({ 1 }))
 })
