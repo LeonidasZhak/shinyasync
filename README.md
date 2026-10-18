@@ -207,7 +207,8 @@ The full app is in `inst/examples/modules/app.R`.
 surf forecast dashboard that uses every primitive in the package: parallel API
 fetches with stale-while-revalidate, a chained async score, a button-triggered
 simulation with cancel, a background refresh, an `observeAsync()` cache writer,
-a raw mirai feeding `reactiveValAsync()`, and a module mounted twice. A task
+a raw mirai feeding `reactiveValAsync()`, a module mounted twice, and a pool
+preloaded with a request template through `pool_async(everywhere = )`. A task
 monitor in the sidebar shows the status of each one.
 
 ## API
