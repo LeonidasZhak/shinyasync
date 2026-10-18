@@ -139,3 +139,16 @@ default_label <- function(fn, expr) {
   if (nchar(text) > 60L) text <- paste0(substr(text, 1L, 57L), "...")
   sprintf("%s(%s)", fn, text)
 }
+
+# The name a call is assigned to, as shiny::reactiveVal() labels itself:
+# `report <- reactiveValAsync()` gives "report". The statement's source
+# reference rides on the call when the code was parsed with keep.source;
+# otherwise, or when the call is not the whole right-hand side, `default`.
+assign_label <- function(call, default) {
+  srcref <- attr(call, "srcref", exact = TRUE)
+  if (is.null(srcref)) return(default)
+  text <- tryCatch(paste(as.character(srcref), collapse = "\n"), error = function(e) "")
+  m <- regmatches(text, regexec("^\\s*([^[:space:]]+)\\s*(<<-|<-|=)\\s*reactiveValAsync\\b", text))[[1]]
+  if (length(m) < 2L) return(default)
+  m[2]
+}

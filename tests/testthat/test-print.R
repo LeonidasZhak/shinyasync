@@ -62,7 +62,7 @@ test_that("observeAsync and reactiveValAsync print their status", {
   v <- reactiveValAsync(1)
   out <- capture.output(print(v))
   expect_length(out, 2L)
-  expect_match(out[1], "<reactiveValAsync> reactiveValAsync")
+  expect_match(out[1], "<reactiveValAsync> v ")
   expect_match(out[2], "^  status   idle$")
 })
 

@@ -1,5 +1,7 @@
 # shinyasync (development version)
 
+* `reactiveValAsync()` is labelled with the name it is assigned to, as
+  `shiny::reactiveVal()` is, so values can be told apart in reactlog (#21).
 * A task on a named mirai compute profile (`mirai_async(.compute = "x")`) no
   longer starts the default pool (#20).
 * `pool_async()` documents what holds the pool outside an app: a script or

@@ -55,3 +55,14 @@ test_that("reactiveValAsync reads are captured by reactiveAsync", {
     expect_equal(peek(r), 4)
   })
 })
+
+test_that("the label is the name the value is assigned to", {
+  env <- new.env()
+  eval(parse(text = "report <- reactiveValAsync()\nx = reactiveValAsync(1)", keep.source = TRUE), env)
+  expect_equal(attr(env$report, "shinyasync")$label, "report")
+  expect_equal(attr(env$x, "shinyasync")$label, "x")
+  eval(parse(text = "plain <- reactiveValAsync()", keep.source = FALSE), env)
+  expect_equal(attr(env$plain, "shinyasync")$label, "reactiveValAsync")
+  named <- reactiveValAsync(label = "mine")
+  expect_equal(attr(named, "shinyasync")$label, "mine")
+})
