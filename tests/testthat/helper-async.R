@@ -14,7 +14,11 @@ wait_for <- function(cond, session, timeout = 15) {
       return(invisible(TRUE))
     }
     if (difftime(Sys.time(), start, units = "secs") > timeout) {
-      stop("Timed out waiting for condition.", call. = FALSE)
+      stop(
+        "Timed out after ", timeout, "s waiting for: ",
+        paste(deparse(body(cond)), collapse = " "),
+        call. = FALSE
+      )
     }
     later::run_now(0.05)
   }
