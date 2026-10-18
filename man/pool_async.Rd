@@ -24,6 +24,12 @@ that session ends, and a call made outside a session holds it until the app
 stops. The pool shuts down when the last holder releases it.
 }
 \details{
+A hold taken outside an app, in a script or at the console, is released
+when the next app in the process stops, since that is when
+\code{\link[shiny:onStop]{shiny::onStop()}} fires. A script that never runs an app keeps its pool
+until the process exits, when the daemons exit with it; call
+\code{mirai::daemons(0)} to stop it earlier.
+
 You need not call it. The first task that runs while no daemons are set
 starts a pool with the defaults, with a message saying so, and the session
 it runs in holds that pool as if it had called \code{pool_async()}. Call it

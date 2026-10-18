@@ -1,5 +1,8 @@
 # shinyasync (development version)
 
+* `pool_async()` documents what holds the pool outside an app: a script or
+  console call releases it when the next app in the process stops, or at
+  process exit (#19).
 * `pool_async()` called in `server()` and the first task in that session now
   hold the pool once rather than twice; the counts balanced at session end
   before, so this is an accounting change only (#18).
