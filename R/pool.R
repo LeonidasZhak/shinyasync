@@ -52,10 +52,14 @@ pool_async <- function(workers = NULL, ...) {
   }
   pool_state$refs <- pool_state$refs + 1L
 
+  # Mark the holder so the first task in this session (ensure_pool()) does
+  # not take a second reference.
   session <- shiny::getDefaultReactiveDomain()
   if (is.null(session)) {
+    pool_state$shinyasync_holds_pool <- TRUE
     shiny::onStop(release_pool)
   } else {
+    session$userData$shinyasync_holds_pool <- TRUE
     session$onSessionEnded(release_pool)
   }
   invisible(TRUE)
@@ -73,9 +77,10 @@ release_pool <- function() {
 
 # Hold the shinyasync pool for the session a task runs in, starting it if no
 # daemons are set, as a pool_async() call in that session's server function
-# would. Each session holds once; a module's session proxy shares its root's
-# userData, so a task dispatched inside moduleServer() counts for the whole
-# session. Outside a session the process holds once, released at app stop.
+# would. Each session holds once, whether through pool_async() or here; a
+# module's session proxy shares its root's userData, so a task dispatched
+# inside moduleServer() counts for the whole session. Outside a session the
+# process holds once, released at app stop.
 ensure_pool <- function() {
   set <- mirai::daemons_set()
   if (set && !pool_state$owned) return(invisible())  # user-managed daemons

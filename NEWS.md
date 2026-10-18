@@ -1,5 +1,8 @@
 # shinyasync (development version)
 
+* `pool_async()` called in `server()` and the first task in that session now
+  hold the pool once rather than twice; the counts balanced at session end
+  before, so this is an accounting change only (#18).
 * A `reactiveAsync()` waiting for an upstream async reactive now reports
   `"running"` while that upstream runs, so a status-driven spinner shows
   during the whole refresh, and in `mode = "latest"` a run already computing

@@ -106,3 +106,24 @@ test_that("every session that runs a task holds the default pool", {
   s2$close()
   expect_false(mirai::daemons_set())
 })
+
+test_that("an explicit pool_async() in server() and the first task hold the pool once", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer({
+    if (mirai::daemons_set()) mirai::daemons(0)
+    pool_state$owned <- FALSE
+    pool_state$refs <- 0L
+  })
+
+  shiny::testServer(function(input, output, session) {
+    pool_async(workers = 1)
+    r <- reactiveAsync(input$n + 1)
+    output$x <- shiny::renderText(r())
+  }, {
+    session$setInputs(n = 1)
+    wait_for(function() identical(peek(r), 2), session)
+    expect_equal(pool_state$refs, 1L)
+    session$close()
+    expect_false(mirai::daemons_set())
+  })
+})
