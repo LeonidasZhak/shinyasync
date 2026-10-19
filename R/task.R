@@ -113,8 +113,9 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
       promises::then(x, onFulfilled = settle, onRejected = settle)
       # mirai's as.promise() checks unresolved() and then registers the
       # notification with .keep(); a task that completes between the two never
-      # notifies (mirai 2.7.3 / nanonext 1.10.3; the first .keep() in a
-      # process loads later, which is window enough for a quick task). then()
+      # notifies (mirai 2.7.3 / nanonext 1.10.3, r-lib/mirai#656; the first
+      # .keep() in a process loads later, which is window enough for a quick
+      # task). then()
       # has returned, so the notification is registered now: a task found
       # resolved here either completed in that window or is about to notify,
       # and finish() settles once either way. Drop this once mirai checks
