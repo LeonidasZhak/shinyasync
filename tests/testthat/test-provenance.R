@@ -8,6 +8,7 @@ test_that("a run records the reads the current value was computed from", {
     r <- reactiveAsync({
       req(input$n)
       seed <- isolate(input$seed)
+      Sys.sleep(1)
       input$n + data()
     })
     output$x <- shiny::renderText(r())
@@ -33,7 +34,7 @@ test_that("staleness tracks inputs, ignores isolated reads and re-runs", {
     })
     output$x <- shiny::renderText(r())
   }, {
-    session$setInputs(n = 1, seed = 1, wait = 0)
+    session$setInputs(n = 1, seed = 1, wait = 1)
     expect_true(stale(r))
     wait_for(function() identical(peek(r), 1), session)
     expect_false(stale(r))

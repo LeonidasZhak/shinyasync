@@ -1,7 +1,10 @@
 test_that("value resolves in a worker and updates with its dependencies", {
   local_pool()
   shiny::testServer(function(input, output, session) {
-    r <- reactiveAsync(input$n * 2)
+    r <- reactiveAsync({
+      Sys.sleep(1)
+      input$n * 2
+    })
     output$x <- shiny::renderText(r())
   }, {
     session$setInputs(n = 2)

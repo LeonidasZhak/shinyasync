@@ -111,13 +111,17 @@ new_async_task <- function(mode = c("latest", "queue"), label = "shinyasync",
     if (inherits(x, "mirai")) {
       settle <- function(...) finish(function() settle_mirai(x$data, inputs))
       promises::then(x, onFulfilled = settle, onRejected = settle)
-      # The promise notification for a mirai that resolves very quickly can be
-      # lost (seen with mirai 2.7.3 / nanonext 1.10.3), so also poll.
-      poll <- function() {
-        if (done || gen != st$gen) return()
-        if (mirai::unresolved(x)) later::later(poll, 0.1) else settle()
-      }
-      later::later(poll, 0.1)
+      # mirai's as.promise() checks unresolved() and then registers the
+      # notification with .keep(); a task that completes between the two never
+      # notifies (mirai 2.7.3 / nanonext 1.10.3; the first .keep() in a
+      # process loads later, which is window enough for a quick task). then()
+      # has returned, so the notification is registered now: a task found
+      # resolved here either completed in that window or is about to notify,
+      # and finish() settles once either way. Drop this once mirai checks
+      # again after registering.
+      later::later(function() {
+        if (!done && gen == st$gen && !mirai::unresolved(x)) settle()
+      })
     } else {
       promises::then(
         x,

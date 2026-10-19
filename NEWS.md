@@ -1,5 +1,16 @@
 # shinyasync (development version)
 
+* A running task no longer polls `mirai::unresolved()` every 100 ms. The poll
+  covered a promise notification that mirai can lose: its `as.promise()`
+  method checks `unresolved()` and then registers the notification, and a
+  task that completes in between never notifies. One check after
+  registration closes that window, so a task settles as soon as its result
+  arrives, with no timer. In `shiny::testServer()`, whose flush ends by
+  running due `later` callbacks, a task that finishes within the flush that
+  dispatched it now settles in that flush, where the poll left 100 ms of
+  grace; a test that reads the status or value of a quick task straight
+  after `setInputs()` should give the task some work. A test reproduces the
+  lost notification by widening the window (#16).
 * A connection opened in `pool_async(everywhere = )` can be closed by a
   `.Last` function assigned in the same expression. R runs it when the
   worker exits, on pool shutdown and when the app process dies, and the pool
