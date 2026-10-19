@@ -155,6 +155,26 @@ test_that("a restarted pool is preloaded again", {
   expect_equal(mirai_async(rate)[], 2)
 })
 
+test_that("a .Last function in everywhere runs when the pool shuts down", {
+  skip_if(mirai::daemons_set(), "daemons already set")
+  withr::defer(reset_pool())
+  marker <- withr::local_tempfile()
+  s <- shiny::MockShinySession$new()
+  shiny::withReactiveDomain(s, pool_async(workers = 1, everywhere = {
+    con <- "a connection"
+    .Last <- function() writeLines(con, marker)
+  }))
+  expect_true(".Last" %in% pool_state$preload$residents)
+  expect_equal(shiny::withReactiveDomain(s, mirai_async(con))[], "a connection")
+  expect_equal(pool_state$refs, 1L)
+
+  s$close()
+  expect_false(mirai::daemons_set())
+  start <- Sys.time()
+  while (!file.exists(marker) && difftime(Sys.time(), start, units = "secs") < 10) Sys.sleep(0.05)
+  expect_equal(readLines(marker), "a connection")
+})
+
 test_that("everywhere is loaded on user-managed daemons when asked", {
   local_pool(1)
   withr::defer(pool_state$preload <- NULL)

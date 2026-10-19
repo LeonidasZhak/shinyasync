@@ -327,6 +327,7 @@ pool_async(workers = 4, everywhere = {
   sales <- arrow::read_parquet("data/sales.parquet")  # one copy per worker
   con <- DBI::dbConnect(RSQLite::SQLite(), "app.db")  # cannot be serialized
   rates <- fx_rates                                   # shipped once from the session
+  .Last <- function() DBI::dbDisconnect(con)          # runs when the worker exits
 })
 
 server <- function(input, output, session) {
@@ -342,8 +343,10 @@ ship them even when the session holds an object of the same name, and
 so the preload runs once per process and connections live until the app stops.
 Resident data is static: data that changes belongs in a reactive read. Every
 worker holds its own copy and opens its own connection, so size memory and the
-database's connection limit by `processes × workers`. Connections are dropped,
-not closed, when the pool shuts down. A daemon that joins after the preload, as
+database's connection limit by `processes × workers`. To close what the
+expression opened, assign a `.Last` function in it: R runs it when the worker
+process exits, on pool shutdown and when the app process dies, and the pool
+does not wait for it. A daemon that joins after the preload, as
 a remote daemon may, does not receive it; a task using a resident name there
 fails with a message saying so.
 

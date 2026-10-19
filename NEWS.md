@@ -1,5 +1,10 @@
 # shinyasync (development version)
 
+* A connection opened in `pool_async(everywhere = )` can be closed by a
+  `.Last` function assigned in the same expression. R runs it when the
+  worker exits, on pool shutdown and when the app process dies, and the pool
+  does not wait for it. This is base R, so no teardown argument was added;
+  it is documented and tested (#25).
 * `pool_async()` gains `everywhere`, an expression evaluated once on every
   worker when the pool starts, for data frames, models and connections that
   every task needs. Objects it refers to are sent once and packages it uses

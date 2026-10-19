@@ -42,6 +42,7 @@ pool_state$preload <- NULL
 #'   sales <- arrow::read_parquet("data/sales.parquet")  # one copy per worker
 #'   con <- DBI::dbConnect(RSQLite::SQLite(), "app.db")  # cannot be serialized
 #'   rates <- fx_rates                                   # shipped once from the session
+#'   .Last <- function() DBI::dbDisconnect(con)          # runs when the worker exits
 #' })
 #'
 #' sales_by_region <- reactiveAsync(summarise_sales(sales, con, input$region))
@@ -67,8 +68,13 @@ pool_state$preload <- NULL
 #' their copy. Data that changes belongs in a reactive read, which is sent per
 #' run. Every worker holds its own copy, so four workers and a 2 GB frame need
 #' 8 GB, and each worker opens its own connection, so three processes of four
-#' workers hold twelve. Connections are not closed when the pool shuts down:
-#' the daemon processes exit and the operating system closes them. A daemon
+#' workers hold twelve. To close what the expression opened, assign a `.Last`
+#' function in it, as above: R runs `.Last` when the worker process exits,
+#' which happens when the pool shuts down and also when the app process dies,
+#' since a worker that loses its connection to the app exits on its own. The
+#' pool does not wait for it, so a slow disconnect never delays shutdown. It
+#' does not run if the worker process itself is killed by a signal. `.Last` is
+#' an assigned name like any other, so `print()` lists it as resident. A daemon
 #' that connects after the preload ran, as a remote daemon may, does not
 #' receive it; a task that uses a resident name on such a worker fails with a
 #' message saying so.
