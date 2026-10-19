@@ -1,0 +1,309 @@
+---
+title: "Side by side with ExtendedTask"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Side by side with ExtendedTask}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Shiny's `ExtendedTask` is the standard way to run slow work off the session
+thread. shinyasync does the same job through a smaller API: each async
+reactive is a cancellable task modelled on `ExtendedTask`, on the same mirai
+daemons. This
+vignette writes the same app both ways, one piece at a time, so you can see
+what the layer removes and what it costs.
+
+The running example is the surf forecast dashboard from
+[shinyasync-example](https://github.com/dawiegriesel/shinyasync-example).
+`fetch_marine()` and `fetch_wind()` call Open-Meteo for a spot and return a
+data frame of hourly conditions; `score()` combines the two into a surf score.
+They are plain functions defined in the app's `R/` directory.
+
+```{r setup}
+library(shiny)
+library(mirai)
+library(shinyasync)
+```
+
+## The pool
+
+Both run on mirai daemons. With `ExtendedTask` you start and stop them
+yourself; with shinyasync the first task starts a pool and the last session
+to use it shuts it down. `pool_async()` is there to size it.
+
+```{r pool-et}
+# ExtendedTask
+daemons(4)
+onStop(function() daemons(0))
+```
+
+```{r pool-sa}
+# shinyasync
+pool_async(workers = 4)
+```
+
+The arguments of `pool_async()` pass through to `daemons()`, so a remote or
+TLS-backed pool is set up the same way. If you already manage daemons, call
+neither.
+
+## A slow fetch from an input
+
+The forecast depends on the selected spot. In plain Shiny it is
+`reactive(fetch_marine(input$spot))`.
+
+`ExtendedTask` takes a function, not an expression. Reactive reads inside it
+are masked, so the values go in as arguments, an observer calls `invoke()`
+when the input changes, and outputs read `result()`. mirai ships nothing it
+is not given, so the helper is passed in by name too.
+
+```{r fetch-et}
+# ExtendedTask
+swell_task <- ExtendedTask$new(function(spot) {
+  mirai(fetch_marine(spot), spot = spot, fetch_marine = fetch_marine)
+})
+observe(swell_task$invoke(input$spot))
+
+output$swell <- renderPlot(plot_swell(swell_task$result()))
+```
+
+```{r fetch-sa}
+# shinyasync
+swell <- reactiveAsync(fetch_marine(input$spot))
+
+output$swell <- renderPlot(plot_swell(swell()))
+```
+
+`reactiveAsync()` reads `input$spot` on the session thread, where it
+registers the dependency, and sends the value to the worker with the
+expression. `fetch_marine()` and every function it calls are found by
+analysing the expression and shipped with it. The result is a reactive, so
+nothing else in the app knows a worker was involved.
+
+If `fetch_marine()` were left out of the `mirai()` call above, the task would
+fail on the worker with `could not find function "fetch_marine"`. The usual
+fix is `everywhere(source("R/api.R"))` after `daemons()`; shinyasync's
+equivalent is `pool_async(everywhere = )`, which is optional because tasks
+ship what they need.
+
+## Status and the previous value
+
+Both report `"running"`, `"success"` and `"error"`, and both halt an output
+that reads a task that has not run yet. The differences are in the first state
+and in what happens to the previous value.
+
+```{r status-et}
+# ExtendedTask
+output$status <- renderText(swell_task$status())    # "initial" before the first invoke
+```
+
+```{r status-sa}
+# shinyasync
+output$status <- renderText(status_async(swell))    # "idle" before the first run
+```
+
+`invoke()` clears the stored value, and while the task runs `result()` halts
+with `cancelOutput = "progress"`: the output keeps whatever it last rendered,
+greyed out, but a reactive that reads `result()` gets nothing. An async
+reactive keeps its previous value while a new one computes, so the old
+forecast stays on screen and can still be read by other reactives.
+`has_value_async()` tells the first run, which wants a spinner, from a
+refresh, which wants a note:
+
+```{r note-sa}
+# shinyasync
+output$note <- renderUI({
+  running <- status_async(swell) == "running"
+  if (running && !has_value_async(swell)) icon("spinner", class = "fa-spin")
+  else if (running) span(class = "text-muted", "Showing the previous forecast")
+})
+```
+
+## A button, and cancelling
+
+The Monte Carlo band around the score should only run on a click, and the user
+should be able to stop it.
+
+`ExtendedTask` has a good story for the button: `bslib::input_task_button()`
+and `bind_task_button()` disable the button while the task runs, with no code
+in the server. It has no story for cancelling. The task does not expose its
+mirai, so to stop it you keep a reference yourself, and `stop_mirai()` then
+resolves the task with an error:
+
+```{r button-et}
+# ExtendedTask
+current <- NULL
+sim_task <- ExtendedTask$new(function(spot, swell, wind) {
+  current <<- mirai(simulate_band(spot, swell, wind), spot = spot, swell = swell,
+                    wind = wind, simulate_band = simulate_band)
+  current
+}) |> bslib::bind_task_button("go")
+
+observe(sim_task$invoke(input$spot, swell_task$result(), wind_task$result())) |>
+  bindEvent(input$go)
+observe(stop_mirai(current)) |> bindEvent(input$cancel)
+
+output$band <- renderPlot(plot_band(sim_task$result()))
+```
+
+After the cancel click the status is `"error"`, `result()` throws
+`20 | Operation canceled` into the output, and Shiny warns that the task
+failed. Showing the previous band instead means catching that error and
+storing the last good value in a `reactiveVal` of your own.
+
+```{r button-sa}
+# shinyasync
+sim <- reactiveAsync(simulate_band(input$spot, swell(), wind())) |>
+  bindEvent(input$go)
+observe(cancel_async(sim)) |> bindEvent(input$cancel)
+
+output$band <- renderPlot(plot_band(sim()))
+```
+
+`bindEvent()` works on an async reactive as on a plain one. `cancel_async()`
+stops the worker, sets the status to `"idle"` and keeps the last band, so
+`has_value_async()` stays `TRUE` and the output does not change until the
+next click. A button that disables itself reads the status:
+
+```{r button-ui-sa}
+# shinyasync
+observe(updateActionButton(session, "go", disabled = status_async(sim) == "running"))
+```
+
+## Inputs that change while a task runs
+
+Drag the spot selector through three spots while a fetch is running.
+`ExtendedTask` queues: the three invocations run one after another, each
+occupying a worker, and the output settles on the third after all have
+finished. A plain `reactive()` would only ever compute the latest.
+
+```{r latest-sa}
+# shinyasync
+swell <- reactiveAsync(fetch_marine(input$spot))                  # cancels, runs latest
+log   <- reactiveAsync(append_log(input$event), mode = "queue")   # runs every one
+```
+
+`reactiveAsync()` cancels the running fetch and starts the latest, as a
+reactive would. `mode = "queue"` gives `ExtendedTask`'s behaviour for work
+that must not be skipped.
+
+## A task that depends on another
+
+The score needs both forecasts. In plain Shiny it is
+`reactive(score(swell(), wind()))`.
+
+With `ExtendedTask` the score is a third task, invoked from an observer that
+reads the first two. `result()` halts while a fetch is running, so the
+observer never pairs a new swell with an old wind, which is right. But the
+score task is not told: while both fetches run for the new spot it still
+reports `"success"` and `result()` still returns the old spot's score, so a
+status badge on the score says it is done when it is about to change, and
+nothing downstream can tell the difference.
+
+```{r chain-et}
+# ExtendedTask
+score_task <- ExtendedTask$new(function(swell, wind) {
+  mirai(score(swell, wind), swell = swell, wind = wind, score = score)
+})
+observe(score_task$invoke(swell_task$result(), wind_task$result()))
+
+output$score <- renderText(score_task$result())
+```
+
+```{r chain-sa}
+# shinyasync
+scored <- reactiveAsync(score(swell(), wind()))
+
+output$score <- renderText(scored())
+```
+
+An async reactive that reads another one waits for it: while `swell` is
+catching up with a new spot, `scored` keeps its previous value, reports
+`"running"` for as long as either fetch does, and runs once on the settled
+pair. The expression is the one you
+would have written for `reactive()`.
+
+## Side effects and fan-out
+
+Writing each scored forecast to a cache is an observer in plain Shiny. With
+`ExtendedTask` it is a task nobody reads, plus the observer that invokes it.
+
+```{r observe-et}
+# ExtendedTask
+cache_task <- ExtendedTask$new(function(spot, scored) {
+  mirai(write_cache(spot, scored), spot = spot, scored = scored, write_cache = write_cache)
+})
+observe(cache_task$invoke(input$spot, score_task$result()))
+```
+
+```{r observe-sa}
+# shinyasync
+observeAsync(write_cache(input$spot, scored()))
+```
+
+Ranking all ten spots on a click is one task per spot. With `ExtendedTask`
+that is one task object per spot, each with its own invoke. shinyasync's
+imperative pair is `reactiveValAsync()`, a reactive value whose setter takes a
+mirai, and `mirai_async()`, which starts a mirai with the same capture as
+`reactiveAsync()`:
+
+```{r fanout-sa}
+# shinyasync
+ranked <- lapply(spots, function(spot) reactiveValAsync())
+
+observe({
+  for (i in seq_along(spots)) {
+    ranked[[i]](mirai_async(fetch_and_score(spots[[i]], days = input$days)))
+  }
+}) |> bindEvent(input$rank)
+
+output$ranking <- renderTable(do.call(rbind, lapply(ranked, function(r) r())))
+```
+
+## Modules and tests
+
+Inside `moduleServer()` nothing changes for either: `ExtendedTask` is created
+with the module's `input`, and `reactiveAsync()` captures the namespaced
+`input` and the module's local functions like any other reactive. A module can
+return the async reactive to its caller, as it would return a `reactive()`.
+
+Testing is the same for both. `shiny::testServer()` has to let the worker
+finish and let Shiny see the result, which takes a few lines of
+`later::run_now()` and `session$flushReact()`; `vignette("testing")` has them.
+
+## What the layer costs
+
+shinyasync finds the reactive reads in the expression by looking at it, which
+`ExtendedTask` never has to do. The limits follow from that, and the README
+section "How dependency capture works" lists them. The ones you are most
+likely to meet:
+
+- Reads must appear literally in the expression. `input[[paste0("x", i)]]`
+  or a read inside a helper function cannot be resolved; read it in a
+  `reactive()` first.
+- Every read is a dependency, even in a branch that is not taken, unless it
+  is wrapped in `isolate()`.
+- The task must be a mirai. `ExtendedTask` accepts any promise, so a
+  `future`, `callr` or `httr2::req_perform_promise()` task needs
+  `ExtendedTask`, or `reactiveValAsync()` fed by hand.
+- `bind_task_button()` and the OpenTelemetry spans Shiny records for an
+  `ExtendedTask` have no counterpart here yet.
+
+## Summary
+
+| | `ExtendedTask` | shinyasync |
+|---|---|---|
+| Written as | task object, invoking observer, `result()` reads | `reactiveAsync(expr)` |
+| Reactive reads | passed as arguments | captured from the expression |
+| Helpers on the worker | passed by name, or `everywhere()` | shipped automatically |
+| Input changes while running | queued | cancelled and re-run (`mode = "queue"` to queue) |
+| Previous value while running | cleared; output greyed out | kept; `has_value_async()` tells first run from refresh |
+| Cancel | keep the mirai yourself; task ends in `"error"` | `cancel_async()`; status `"idle"`, value kept |
+| Depends on another task | another task and observer | read it in the expression |
+| Side effect | task nobody reads, plus observer | `observeAsync()` |
+| Task source | any promise | mirai |
+| Status values | `initial`, `running`, `success`, `error` | `idle`, `running`, `success`, `error` |

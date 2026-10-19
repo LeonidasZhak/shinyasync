@@ -35,7 +35,7 @@ Shiny's `ExtendedTask` makes an app responsive within a session and across concu
 - while a task runs, reading the reactive returns the previous value (stale-while-revalidate) or silently halts like `req()` when there is none;
 - errors surface on the next read, as they would from any reactive.
 
-Because they are real reactives, `bindEvent()`, `debounce()`, `req()`, `observe()` and modules all work unchanged. See [How dependency capture works](#how-dependency-capture-works) for what can and cannot appear inside an async expression.
+Because they are real reactives, `bindEvent()`, `debounce()`, `req()`, `observe()` and modules all work unchanged. See [How dependency capture works](#how-dependency-capture-works) for what can and cannot appear inside an async expression. `vignette("extendedtask")` writes one app both ways, with `ExtendedTask` and with shinyasync, piece by piece.
 
 Documentation: <https://dawiegriesel.github.io/shinyasync/>
 

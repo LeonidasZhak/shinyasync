@@ -1,5 +1,10 @@
 # shinyasync (development version)
 
+* New vignette, `vignette("extendedtask")`, writes the surf forecast app with
+  `ExtendedTask` and with shinyasync side by side, one piece at a time: the
+  pool, a fetch from an input, status and the previous value, a button with
+  cancel, superseded inputs, a chained task, side effects and fan-out, and
+  what the layer costs against `ExtendedTask`.
 * A running task no longer polls `mirai::unresolved()` every 100 ms. The poll
   covered a promise notification that mirai can lose: its `as.promise()`
   method checks `unresolved()` and then registers the notification, and a
